@@ -399,8 +399,8 @@ void CPU8502::irq() {
 
     setFlag(B, false);
     setFlag(U, true);
-    setFlag(I, true);
-    stackPush(P);
+    stackPush(P);        // push P with original I=0 so RTI restores it correctly
+    setFlag(I, true);    // set I only after push
 
     uint16_t lo = busRead(0xFFFE);
     uint16_t hi = busRead(0xFFFF);
@@ -414,8 +414,8 @@ void CPU8502::nmi() {
 
     setFlag(B, false);
     setFlag(U, true);
+    stackPush(P);        // same fix — push before setting I
     setFlag(I, true);
-    stackPush(P);
 
     uint16_t lo = busRead(0xFFFA);
     uint16_t hi = busRead(0xFFFB);

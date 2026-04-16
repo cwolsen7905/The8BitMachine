@@ -1,56 +1,68 @@
 #include "Bus.h"
 
+// ---------------------------------------------------------------------------
+// Device management
+// ---------------------------------------------------------------------------
+
+void Bus::addDevice(uint16_t start, uint16_t end,
+                    IBusDevice* device, const std::string& label) {
+    devices_.push_back({ start, end, device, label });
+}
+
+void Bus::removeDevice(IBusDevice* device) {
+    devices_.erase(
+        std::remove_if(devices_.begin(), devices_.end(),
+            [device](const DeviceEntry& e){ return e.device == device; }),
+        devices_.end());
+}
+
+void Bus::clearDevices() {
+    devices_.clear();
+}
+
+// ---------------------------------------------------------------------------
+// Lifecycle
+// ---------------------------------------------------------------------------
+
 void Bus::reset() {
-    ram.reset();
-    cia1.reset();
-    cia2.reset();
+    for (auto& e : devices_)
+        if (e.device) e.device->reset();
 }
 
 void Bus::clock() {
-    cia1.clock();
-    cia2.clock();
+    for (auto& e : devices_)
+        if (e.device) e.device->clock();
 }
 
 // ---------------------------------------------------------------------------
 // Read
 // ---------------------------------------------------------------------------
+
 uint8_t Bus::read(uint16_t addr) const {
-    if (!isIO(addr))
-        return ram.read(addr);
+    if (addr == CHAR_OUT_ADDR) return 0xFF;  // write-only port
 
-    if (addr >= CIA1_START && addr <= CIA1_END)
-        return cia1.read(static_cast<uint8_t>(addr - CIA1_START));
-
-    if (addr >= CIA2_START && addr <= CIA2_END)
-        return cia2.read(static_cast<uint8_t>(addr - CIA2_START));
-
-    // CHAR_OUT is write-only; all other unimplemented I/O reads open bus
-    return 0xFF;
+    for (const auto& e : devices_) {
+        if (e.device && addr >= e.start && addr <= e.end)
+            return e.device->read(static_cast<uint16_t>(addr - e.start));
+    }
+    return 0xFF;  // open bus
 }
 
 // ---------------------------------------------------------------------------
 // Write
 // ---------------------------------------------------------------------------
-void Bus::write(uint16_t addr, uint8_t value) {
-    if (!isIO(addr)) {
-        ram.write(addr, value);
-        return;
-    }
 
+void Bus::write(uint16_t addr, uint8_t value) {
     if (addr == CHAR_OUT_ADDR) {
         if (onCharOut) onCharOut(value);
         return;
     }
 
-    if (addr >= CIA1_START && addr <= CIA1_END) {
-        cia1.write(static_cast<uint8_t>(addr - CIA1_START), value);
-        return;
+    for (auto& e : devices_) {
+        if (e.device && addr >= e.start && addr <= e.end) {
+            e.device->write(static_cast<uint16_t>(addr - e.start), value);
+            return;
+        }
     }
-
-    if (addr >= CIA2_START && addr <= CIA2_END) {
-        cia2.write(static_cast<uint8_t>(addr - CIA2_START), value);
-        return;
-    }
-
-    // Unimplemented I/O write — silently ignored
+    // Unmatched write — silently dropped (open bus)
 }

@@ -58,8 +58,8 @@ void CIA6526::timerAUnderflow() {
 // Register read
 // ---------------------------------------------------------------------------
 
-uint8_t CIA6526::read(uint8_t reg) const {
-    switch (reg & 0x0F) {
+uint8_t CIA6526::read(uint16_t offset) const {
+    switch (offset & 0x0F) {
         case REG_PRA:     return pra_;
         case REG_PRB:     return prb_;
         case REG_DDRA:    return ddra_;
@@ -91,8 +91,8 @@ uint8_t CIA6526::read(uint8_t reg) const {
 // Register write
 // ---------------------------------------------------------------------------
 
-void CIA6526::write(uint8_t reg, uint8_t value) {
-    switch (reg & 0x0F) {
+void CIA6526::write(uint16_t offset, uint8_t value) {
+    switch (offset & 0x0F) {
         case REG_PRA:     pra_  = value; break;
         case REG_PRB:     prb_  = value; break;
         case REG_DDRA:    ddra_ = value; break;

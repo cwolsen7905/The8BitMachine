@@ -6,8 +6,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "emulator/Bus.h"
-#include "emulator/CPU8502.h"
+#include "emulator/Machine.h"
 
 class Application {
 public:
@@ -26,10 +25,9 @@ private:
     bool          running_   = false;
 
     // -----------------------------------------------------------------------
-    // Emulator
+    // Emulator — Machine owns CPU, Bus, and all devices
     // -----------------------------------------------------------------------
-    Bus      bus_;
-    CPU8502  cpu_;
+    Machine  machine_;
     bool     emulatorRunning_ = false;
     uint64_t cycleCount_      = 0;
     int      cyclesPerFrame_  = 1000;   // ~60 kHz at 60 fps (debug default)
@@ -47,6 +45,7 @@ private:
     bool showCpuState_ = true;
     bool showDisasm_   = false;
     bool showMemView_  = false;
+    bool showDesigner_ = false;
 
     // -----------------------------------------------------------------------
     // Disassembler
@@ -70,7 +69,6 @@ private:
     char                     termInput_[256];
 
     // Line buffer for characters arriving from the CPU via CHAR_OUT ($F000).
-    // Accumulated until a newline, then flushed to the terminal as one line.
     std::string              ioLineBuf_;
 
     // -----------------------------------------------------------------------
@@ -85,6 +83,7 @@ private:
     void drawCpuState();
     void drawDisassembler();
     void drawMemoryViewer();
+    void drawMachineDesigner();
 
     void termPrint(const std::string& line);
 

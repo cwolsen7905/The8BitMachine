@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ICPU.h"
 #include <array>
 #include <cstdint>
 #include <string>
@@ -10,7 +11,7 @@ class Bus;
 // MOS 8502 — CMOS variant of the 6502, used in the Commodore 128.
 // Same programmer model as the NMOS 6502; runs at up to 2 MHz.
 // ---------------------------------------------------------------------------
-class CPU8502 {
+class CPU8502 : public ICPU {
 public:
     // -----------------------------------------------------------------------
     // Registers
@@ -42,15 +43,16 @@ public:
     // -----------------------------------------------------------------------
     CPU8502();
 
-    void connectBus(Bus* bus);
-
-    void reset();           // Assert RESET
-    void clock();           // Single clock tick
-    void irq();             // Assert IRQ line
-    void nmi();             // Assert NMI line
-
-    bool        complete()    const;  // True when current instruction finished
-    std::string stateString() const;  // One-line register dump for the terminal
+    // ICPU interface
+    const char* cpuName()    const override { return "MOS 8502"; }
+    void connectBus(Bus* bus)      override;
+    void reset()                   override;
+    void clock()                   override;
+    void irq()                     override;
+    void nmi()                     override;
+    bool        complete()    const override;
+    uint16_t    getPC()       const override { return PC; }
+    std::string stateString() const override;
 
 private:
     // -----------------------------------------------------------------------

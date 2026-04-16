@@ -1,58 +1,49 @@
 #pragma once
 
+#include "IBusDevice.h"
 #include <cstdint>
 #include <functional>
+#include <sstream>
+#include <iomanip>
 
 // ---------------------------------------------------------------------------
 // MOS 6526 Complex Interface Adapter  (CIA)
 //
-// Used in the Commodore 128 as CIA1 ($F100) and CIA2 ($F200).
+// Register map ($00–$0F, 4 low address bits select the register):
+//   $00  PRA   — Port A data          $08  TOD_10THS — tenths  (stub)
+//   $01  PRB   — Port B data          $09  TOD_SEC   — seconds (stub)
+//   $02  DDRA  — Port A direction     $0A  TOD_MIN   — minutes (stub)
+//   $03  DDRB  — Port B direction     $0B  TOD_HR    — hours   (stub)
+//   $04  TALO  — Timer A low          $0C  SDR       — serial  (stub)
+//   $05  TAHI  — Timer A high         $0D  ICR       — Interrupt Control
+//   $06  TBLO  — Timer B low  (stub)  $0E  CRA       — Control A (Timer A)
+//   $07  TBHI  — Timer B high (stub)  $0F  CRB       — Control B (stub)
 //
-// Implemented registers (this pass):
-//   $00  PRA   — Port A data
-//   $01  PRB   — Port B data
-//   $02  DDRA  — Port A direction (1=output)
-//   $03  DDRB  — Port B direction
-//   $04  TALO  — Timer A latch/counter low
-//   $05  TAHI  — Timer A latch/counter high
-//   $06  TBLO  — Timer B latch/counter low  (stub — writable, no countdown)
-//   $07  TBHI  — Timer B latch/counter high (stub)
-//   $08  TOD_10THS — Time-of-Day tenths (stub)
-//   $09  TOD_SEC   — seconds (stub)
-//   $0A  TOD_MIN   — minutes (stub)
-//   $0B  TOD_HR    — hours   (stub)
-//   $0C  SDR   — Serial Data Register (stub)
-//   $0D  ICR   — Interrupt Control Register
-//   $0E  CRA   — Control Register A  (Timer A)
-//   $0F  CRB   — Control Register B  (Timer B, stub)
-//
-// ICR bit masks:
-//   Bit 0  TA   — Timer A underflow
-//   Bit 1  TB   — Timer B underflow  (stub)
-//   Bit 7  IR   — Any enabled interrupt fired  (read-only in flag byte)
-//
-// CRA bit masks:
-//   Bit 0  START    — 1 = timer running
-//   Bit 3  ONSHOT   — 1 = stop after one underflow, 0 = continuous
-//   Bit 4  LOAD     — 1 = force load latch → counter (self-clearing)
-//   Bit 6  INMODE   — 0 = count ϕ2 cycles, 1 = count CNT pulses (stub=0)
+// ICR: bit 0 = TA underflow, bit 1 = TB (stub), bit 7 = IR (any enabled)
+// CRA: bit 0 = START, bit 3 = ONESHOT, bit 4 = LOAD (self-clearing)
 // ---------------------------------------------------------------------------
 
-class CIA6526 {
+class CIA6526 : public IBusDevice {
 public:
-    // Callback fired when the IRQ line is asserted.
-    // The connected CPU should call cpu_.irq() in response.
-    std::function<void()> onIRQ;
-
     CIA6526() { reset(); }
 
-    void reset();
+    // IBusDevice interface
+    const char* deviceName() const override { return "MOS 6526 CIA"; }
+    void        reset()            override;
+    void        clock()            override;
+    uint8_t     read (uint16_t offset) const override;
+    void        write(uint16_t offset, uint8_t value) override;
+    std::string statusLine() const override {
+        std::ostringstream s;
+        s << "TA=$" << std::uppercase << std::hex << std::setfill('0')
+          << std::setw(4) << (unsigned)timerACounter_
+          << " CRA=$" << std::setw(2) << (unsigned)cra_
+          << ((cra_ & CRA_START) ? " RUN" : " STP");
+        return s.str();
+    }
 
-    // Called once per emulated clock cycle.
-    void clock();
-
-    uint8_t read (uint8_t reg) const;
-    void    write(uint8_t reg, uint8_t value);
+    // Callback fired when an unmasked interrupt fires.
+    std::function<void()> onIRQ;
 
     // -----------------------------------------------------------------------
     // Register offsets

@@ -72,6 +72,7 @@ set(SOURCES
     src/emulator/Disassembler.cpp
     src/emulator/Memory.cpp
     src/emulator/Bus.cpp
+    src/emulator/Machine.cpp
 )
 
 if(APPLE)
