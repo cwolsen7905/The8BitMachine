@@ -37,9 +37,9 @@ The 8502 is the CMOS variant of the 6502 used in the Commodore 128, capable of r
 - **Configurable clock speed** — Emulator → Speed presets: ~60 kHz (debug), ~500 kHz, ~1 MHz, ~2 MHz (real 8502); effective MHz shown in the menu bar
 
 ### ROM development
-- `roms/test.s` — 6502 assembly test ROM; prints `HELLO` at startup then writes `*` + newline roughly once per second in an infinite loop
+- `roms/test.s` — CIA1 Timer A interrupt demo: patches the IRQ vector at runtime, programs CIA1 Timer A to fire ~5× per second (at 60 kHz debug speed), then spins in a loop while the IRQ handler writes `*` + newline to the terminal on every timer tick
 - `build.sh` assembles all `roms/*.s` files automatically via ca65/ld65 before building the C++ emulator
-- Load the assembled ROM via **File → Load ROM → `roms/test.prg`**, then press **F5** to run
+- Load via **File → Load ROM → `roms/test.prg`**, press **F5** — `CIA1 TIMER` appears once, then `*` lines stream in driven purely by CIA1 IRQs
 
 ---
 
