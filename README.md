@@ -1,93 +1,173 @@
-# The 8-Bit Machine 
+# The 8-Bit Machine
 
+A MOS 8502 CPU emulator with a graphical frontend, written in C++17.
 
+The 8502 is the CMOS variant of the 6502 used in the Commodore 128, capable of running at up to 2 MHz. This project aims to emulate the full system over time, starting with the CPU core and debug tooling before moving to hardware peripherals.
 
-## Getting started
+---
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## Current State  (v0.7)
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+### CPU
+- All 56 legal 6502/8502 opcodes implemented
+- All 13 addressing modes: IMP, ACC, IMM, ZP0, ZPX, ZPY, ABS, ABX, ABY, IND, IZX, IZY, REL
+- Cycle-accurate timing including page-cross penalties and branch penalties
+- IRQ and NMI with full stack push and vector load
+- BRK / RTI with correct flag handling
+- NMOS 6502 indirect JMP page-wrap bug reproduced
+- Illegal opcodes mapped to extended NOP
 
-## Add your files
+### GUI
+- Dockable panel layout (Dear ImGui docking branch)
+- Standard menu bar — File / Emulator / View / Debug / Help
+- **Screen panel** — 320×200 canvas (placeholder; texture rendering not yet wired up)
+- **Terminal panel** — green-on-black scrollable log with command input
+- **CPU State panel** — live register and flag display, cycle counter
+- **Disassembler panel** (Debug menu) — live disassembly with Follow PC, Go To address, highlighted current instruction; click any row to toggle a breakpoint (red `●`); emulator halts automatically when PC hits a breakpoint
+- **Memory Viewer panel** (Debug menu) — 16×16 hex+ASCII grid, jump to any address, PC highlighted in yellow
+- **ROM loading** (File → Load ROM) — native macOS file dialog; supports raw `.bin` and Commodore `.prg` (load address embedded in first 2 bytes); resets CPU and jumps disassembler to load address automatically
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+### Emulator core
+- 64 KB flat RAM; reset vector points to the loaded program or the built-in NOP stub at `$0200`
+- **Decoded address bus** — I/O window `$F000–$FBFF` dispatched by address range; CIA1, CIA2, SID ranges fully decoded
+- **CIA1 (MOS 6526) at `$F100–$F1FF`** — Timer A with IRQ, ICR mask/flag, data ports PRA/PRB; CIA1 IRQ wired to CPU IRQ line; Timer A counter visible in CPU State panel
+- **CIA2 stub at `$F200–$F2FF`** — registers readable/writable, no side effects yet
+- **CHAR_OUT port at `$F000`** — CPU writes to this address appear in the Terminal panel (line-buffered; flushed on `$0A` LF)
+- **F10 instruction step** — runs the CPU until the current instruction completes (not just one clock tick)
+- **Configurable clock speed** — Emulator → Speed presets: ~60 kHz (debug), ~500 kHz, ~1 MHz, ~2 MHz (real 8502); effective MHz shown in the menu bar
+
+### ROM development
+- `roms/test.s` — 6502 assembly test ROM; prints `HELLO` at startup then writes `*` + newline roughly once per second in an infinite loop
+- `build.sh` assembles all `roms/*.s` files automatically via ca65/ld65 before building the C++ emulator
+- Load the assembled ROM via **File → Load ROM → `roms/test.prg`**, then press **F5** to run
+
+---
+
+## Prerequisites
+
+| Tool | Install |
+|------|---------|
+| CMake ≥ 3.20 | `brew install cmake` |
+| SDL2 | `brew install sdl2` |
+| cc65 (ca65/ld65) | `brew install cc65` |
+| C++17 compiler | Xcode Command Line Tools (`xcode-select --install`) |
+
+Dear ImGui (docking branch, v1.91.6) is fetched automatically by CMake — no manual download needed.
+
+cc65 is only required if you want to rebuild the 6502 assembly ROMs from source. The build script skips the assembly step with a warning if cc65 is not installed.
+
+---
+
+## Building
+
+```bash
+./build.sh             # Debug build (default)
+./build.sh Release     # Release build
+```
+
+Or manually:
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build --parallel
+```
+
+The binary is placed at `build/the-8-bit-machine`.
+
+---
+
+## Running
+
+```bash
+./build/the-8-bit-machine
+```
+
+The UI layout is saved to `imgui_layout.ini` in the working directory so panel positions persist between sessions.
+
+---
+
+## Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| F5  | Run emulator |
+| F6  | Pause emulator |
+| F8  | Reset (reloads reset vector, clears registers) |
+| F10 | Step one clock cycle |
+
+---
+
+## Project Structure
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.brainchurts.com/cwolsen/the-8-bit-machine.git
-git branch -M dev
-git push -uf origin dev
+the-8-bit-machine/
+├── CMakeLists.txt
+├── build.sh
+├── roms/
+│   ├── test.s          6502 assembly source — banner + COUNT loop demo
+│   ├── test.cfg        ld65 linker config (flat binary at $0200)
+│   └── test.prg        assembled PRG (generated by build.sh — not in git)
+└── src/
+    ├── main.cpp
+    ├── gui/
+    │   ├── Application.h / .cpp    Window, event loop, all panel rendering
+    │   ├── FileDialog.h            File-open dialog interface
+    │   └── FileDialog.mm           macOS NSOpenPanel implementation
+    └── emulator/
+        ├── CPU8502.h / .cpp        Full MOS 8502 instruction set
+        ├── Disassembler.h / .cpp   Stateless 6502 disassembler
+        ├── Memory.h / .cpp         64 KB flat RAM
+        └── Bus.h / .cpp            Address bus — routes CPU reads/writes to devices
 ```
 
-## Integrate with your tools
+### GUI (`src/gui/`)
 
-- [ ] [Set up project integrations](https://gitlab.brainchurts.com/cwolsen/the-8-bit-machine/-/settings/integrations)
+`Application` owns the SDL window, OpenGL context, and ImGui context. Each panel is a separate `ImGui::Begin` / `ImGui::End` block that can be docked, resized, or hidden via the View menu.
 
-## Collaborate with your team
+`FileDialog` is a thin Objective-C++ wrapper around `NSOpenPanel` — isolated to `FileDialog.mm` so the rest of the codebase stays pure C++.
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+### Emulator (`src/emulator/`)
 
-## Test and Deploy
+| Class | Responsibility |
+|-------|----------------|
+| `CPU8502` | Full 8502 register model, 256-entry dispatch table, all legal opcodes, IRQ/NMI |
+| `Disassembler` | Stateless — walks memory forward, formats opcodes and operands for all 13 modes |
+| `Memory` | Flat 64 KB byte array; seeds the reset vector and a stub NOP loop on `reset()` |
+| `Bus` | Single read/write dispatch point — future home of VIC-IIe, SID, CIA1/2 |
 
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+---
 
 ## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+- [x] Full 8502 instruction set (all 56 legal opcodes + addressing modes)
+- [x] Interrupt handling (IRQ, NMI, BRK)
+- [x] Disassembler panel
+- [x] ROM loading (`.bin` / `.prg` files via File → Load ROM)
+- [x] Memory-mapped I/O: CHAR_OUT port at `$F000` routes to Terminal panel
+- [x] 6502 ASM test ROM with build system integration (ca65/ld65)
+- [x] Memory viewer panel (hex+ASCII, jump to address, PC highlight)
+- [x] Decoded address bus with reserved I/O ranges for future peripherals
+- [x] F10 steps a full instruction (not a single clock tick)
+- [x] Breakpoints — click any disassembler row to toggle; run loop halts on hit
+- [x] Configurable clock speed with real-MHz display in status bar
+- [x] CIA1 (MOS 6526) — Timer A + IRQ + data ports; IRQ wired to CPU
+- [x] CIA2 stub at `$F200`
+- [ ] Proper memory map (ROM regions, I/O space, bank switching)
+- [ ] CIA1 / CIA2 stubs (MOS 6526) — needed for KERNAL timing
+- [ ] VIC-IIe video chip stub → render to Screen panel texture
+- [ ] SID audio chip stub (MOS 6581/8580)
+- [ ] Keyboard input via CIA1 matrix
+- [ ] Full Commodore 128 memory banking
+- [ ] Breakpoint support
+- [ ] Save / load emulator state
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+---
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+## Dependencies
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+| Library | Version | Source |
+|---------|---------|--------|
+| [SDL2](https://libsdl.org) | ≥ 2.0.22 | Homebrew |
+| [Dear ImGui](https://github.com/ocornut/imgui) | v1.91.6-docking | CMake FetchContent |
+| OpenGL | 3.3 core | System (macOS) |
+| [cc65](https://cc65.github.io) (ca65/ld65) | ≥ 2.19 | Homebrew (optional — for ROM assembly) |

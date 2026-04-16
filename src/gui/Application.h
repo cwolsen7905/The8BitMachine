@@ -1,0 +1,94 @@
+#pragma once
+
+#include <SDL.h>
+#include <imgui.h>
+#include <string>
+#include <unordered_set>
+#include <vector>
+
+#include "emulator/Bus.h"
+#include "emulator/CPU8502.h"
+
+class Application {
+public:
+    Application();
+    ~Application();
+
+    bool init();
+    void run();
+
+private:
+    // -----------------------------------------------------------------------
+    // Window / context
+    // -----------------------------------------------------------------------
+    SDL_Window*   window_    = nullptr;
+    SDL_GLContext glContext_  = nullptr;
+    bool          running_   = false;
+
+    // -----------------------------------------------------------------------
+    // Emulator
+    // -----------------------------------------------------------------------
+    Bus      bus_;
+    CPU8502  cpu_;
+    bool     emulatorRunning_ = false;
+    uint64_t cycleCount_      = 0;
+    int      cyclesPerFrame_  = 1000;   // ~60 kHz at 60 fps (debug default)
+
+    // -----------------------------------------------------------------------
+    // Breakpoints
+    // -----------------------------------------------------------------------
+    std::unordered_set<uint16_t> breakpoints_;
+
+    // -----------------------------------------------------------------------
+    // UI visibility toggles
+    // -----------------------------------------------------------------------
+    bool showScreen_   = true;
+    bool showTerminal_ = true;
+    bool showCpuState_ = true;
+    bool showDisasm_   = false;
+    bool showMemView_  = false;
+
+    // -----------------------------------------------------------------------
+    // Disassembler
+    // -----------------------------------------------------------------------
+    bool     disasmFollowPC_  = true;
+    uint16_t disasmViewAddr_  = 0x0200;
+    char     disasmGotoInput_[5] = "0200";
+
+    // -----------------------------------------------------------------------
+    // Memory viewer
+    // -----------------------------------------------------------------------
+    uint16_t memViewAddr_      = 0x0000;
+    char     memViewInput_[5]  = "0000";
+    bool     memViewFollowPC_  = false;
+
+    // -----------------------------------------------------------------------
+    // Terminal
+    // -----------------------------------------------------------------------
+    std::vector<std::string> termLines_;
+    bool                     termScrollToBottom_ = false;
+    char                     termInput_[256];
+
+    // Line buffer for characters arriving from the CPU via CHAR_OUT ($F000).
+    // Accumulated until a newline, then flushed to the terminal as one line.
+    std::string              ioLineBuf_;
+
+    // -----------------------------------------------------------------------
+    // Private methods
+    // -----------------------------------------------------------------------
+    void processEvents();
+    void render();
+
+    void drawMenuBar();
+    void drawScreen();
+    void drawTerminal();
+    void drawCpuState();
+    void drawDisassembler();
+    void drawMemoryViewer();
+
+    void termPrint(const std::string& line);
+
+    void emulatorStep();
+    void emulatorReset();
+    void loadRomDialog();
+};
