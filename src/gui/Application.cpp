@@ -903,18 +903,22 @@ void Application::drawMachineDesigner() {
                         ImGuiInputTextFlags_CharsHexadecimal |
                         ImGuiInputTextFlags_CharsUppercase   |
                         ImGuiInputTextFlags_EnterReturnsTrue;
+                    // Tab triggers a commit just like Enter — check before InputText
+                    // consumes the event so the key state is still readable.
+                    const bool tabPressed = ImGui::IsKeyPressed(ImGuiKey_Tab, false);
                     bool entered = ImGui::InputText("##ec", designerEditBuf_, 5, kEditFlags);
                     bool lost    = !entered && ImGui::IsItemDeactivated();
+                    // Treat Tab-out as an intentional commit attempt.
+                    const bool commit = entered || (lost && tabPressed);
 
                     if (invalid) ImGui::PopStyleColor();
 
-                    if (entered) {
+                    if (commit) {
                         if (invalid) {
-                            designerEditFocus_ = true;  // reject Enter — keep editing
+                            designerEditFocus_ = true;  // reject commit — keep editing
                         } else {
-                            // Any valid commit clears all pending invalid state for
-                            // this row — stale markers from the other cell are gone.
-                            if (designerInvalidRow_ == i)
+                            // Clear only this cell's own invalid marker on commit.
+                            if (designerInvalidRow_ == i && designerInvalidCol_ == semanticCol)
                                 designerInvalidRow_ = designerInvalidCol_ = -1;
                             machine_.bus().modifyAt((size_t)i, ns, ne);
                             designerEditRow_ = designerEditCol_ = -1;
@@ -927,7 +931,9 @@ void Application::drawMachineDesigner() {
                             designerInvalidCol_ = semanticCol;
                             std::strncpy(designerInvalidBuf_, designerEditBuf_, 5);
                         } else {
-                            if (designerInvalidRow_ == i)
+                            // Click-away with a valid value: clear only this cell's
+                            // own invalid marker — don't disturb the other cell.
+                            if (designerInvalidRow_ == i && designerInvalidCol_ == semanticCol)
                                 designerInvalidRow_ = designerInvalidCol_ = -1;
                         }
                         designerEditRow_ = designerEditCol_ = -1;
