@@ -10,7 +10,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ---
 
-## Current State  (v0.21)
+## Current State  (v0.22)
 
 ### Machine Designer
 - **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and an optional `statusLine()` for the designer panel
@@ -53,8 +53,8 @@ WDC 65C02 additions:
 
 ### Emulator core
 - 64 KB flat RAM; reset vector points to the loaded program or the built-in NOP stub at `$0200`
-- **CIA1 (MOS 6526) at `$F100–$F1FF`** — Timer A with IRQ, ICR mask/flag, data ports PRA/PRB; CIA1 IRQ wired to CPU IRQ line
-- **CIA2 stub at `$F200–$F2FF`** — registers readable/writable, no side effects yet
+- **CIA1 (MOS 6526) at `$F100–$F1FF`** — Timer A + Timer B (ϕ2 or TA-underflow count mode), full ADSR envelope, ICR mask/flags, TOD BCD clock with alarm and latch-on-read, data ports PRA/PRB; CIA1 IRQ wired to CPU IRQ line
+- **CIA2 at `$F200–$F2FF`** — same full implementation as CIA1
 - **SID6581 at `$D400–$D7FF`** — all 29 MOS 6581/8580 registers; SDL audio output at 44100 Hz; triangle/sawtooth/pulse/noise waveforms with correct 23-bit LFSR; full ADSR envelopes with datasheet-accurate timing; master volume; Machine Designer shows volume, filter cutoff, and voice 1 frequency
 - **CHAR_OUT port at `$F000`** — CPU writes here appear in the Terminal panel (line-buffered; flushed on LF)
 - **F10 instruction step** — runs the CPU until the current instruction completes

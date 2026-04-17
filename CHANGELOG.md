@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.22.0] - 2026-04-17
+
+### Changed
+- **CIA6526 Timer B** — fully implemented; countdown at ϕ2 rate or Timer A underflow count (CRB bit 6 `INMODE`); underflow sets ICR bit 1, fires IRQ if unmasked; `ONESHOT` and `LOAD` bits behave identically to Timer A; TBHI write loads counter when timer is stopped
+- **CIA6526 TOD clock** — BCD time-of-day with full carry chain (tenths→seconds→minutes→hours 1–12 + AM/PM); advances via `clock()` accumulator (default period 100 000 cycles ≈ 1 tenth/s at 1 MHz); reading `$0B` (HR) latches the entire TOD until `$08` (10THS) is read; writing with CRB bit 7 set writes the alarm instead of the time; alarm match fires ICR bit 2 and IRQ if unmasked
+- `statusLine()` now shows both timers (TA/TB with RUN/STP) and live TOD HH:MM:SS.t am/pm
+- CRB constants added: `CRB_START`, `CRB_ONESHOT`, `CRB_LOAD`, `CRB_INMODE`, `CRB_ALARM`
+- `ICR_TOD` (bit 2) added to interrupt sources
+
+---
+
 ## [0.21.0] - 2026-04-17
 
 ### Added

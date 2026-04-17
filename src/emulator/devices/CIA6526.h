@@ -3,24 +3,26 @@
 #include "emulator/core/IBusDevice.h"
 #include <cstdint>
 #include <functional>
-#include <sstream>
-#include <iomanip>
+#include <string>
 
 // ---------------------------------------------------------------------------
 // MOS 6526 Complex Interface Adapter  (CIA)
 //
 // Register map ($00–$0F, 4 low address bits select the register):
-//   $00  PRA   — Port A data          $08  TOD_10THS — tenths  (stub)
-//   $01  PRB   — Port B data          $09  TOD_SEC   — seconds (stub)
-//   $02  DDRA  — Port A direction     $0A  TOD_MIN   — minutes (stub)
-//   $03  DDRB  — Port B direction     $0B  TOD_HR    — hours   (stub)
+//   $00  PRA   — Port A data          $08  TOD_10THS — tenths  (BCD 0–9)
+//   $01  PRB   — Port B data          $09  TOD_SEC   — seconds (BCD 0–59)
+//   $02  DDRA  — Port A direction     $0A  TOD_MIN   — minutes (BCD 0–59)
+//   $03  DDRB  — Port B direction     $0B  TOD_HR    — hours   (BCD 1–12, bit7=PM)
 //   $04  TALO  — Timer A low          $0C  SDR       — serial  (stub)
 //   $05  TAHI  — Timer A high         $0D  ICR       — Interrupt Control
-//   $06  TBLO  — Timer B low  (stub)  $0E  CRA       — Control A (Timer A)
-//   $07  TBHI  — Timer B high (stub)  $0F  CRB       — Control B (stub)
+//   $06  TBLO  — Timer B low          $0E  CRA       — Control A
+//   $07  TBHI  — Timer B high         $0F  CRB       — Control B
 //
-// ICR: bit 0 = TA underflow, bit 1 = TB (stub), bit 7 = IR (any enabled)
-// CRA: bit 0 = START, bit 3 = ONESHOT, bit 4 = LOAD (self-clearing)
+// ICR bits: 0=TA underflow, 1=TB underflow, 2=TOD alarm, 7=IR (any enabled)
+// CRA: bit 0=START, bit 3=ONESHOT, bit 4=LOAD
+// CRB: bit 0=START, bit 3=ONESHOT, bit 4=LOAD, bit 6=INMODE (0=ϕ2, 1=TA),
+//       bit 7=ALARM (0=write TOD time, 1=write TOD alarm)
+// TOD: reading $0B latches the time until $08 is read; alarm fires ICR bit 2
 // ---------------------------------------------------------------------------
 
 class CIA6526 : public IBusDevice {
@@ -33,14 +35,7 @@ public:
     void        clock()            override;
     uint8_t     read (uint16_t offset) const override;
     void        write(uint16_t offset, uint8_t value) override;
-    std::string statusLine() const override {
-        std::ostringstream s;
-        s << "TA=$" << std::uppercase << std::hex << std::setfill('0')
-          << std::setw(4) << (unsigned)timerACounter_
-          << " CRA=$" << std::setw(2) << (unsigned)cra_
-          << ((cra_ & CRA_START) ? " RUN" : " STP");
-        return s.str();
-    }
+    std::string statusLine() const override;
 
     // Callback fired when an unmasked interrupt fires.
     std::function<void()> onIRQ;
@@ -75,6 +70,7 @@ public:
     // ICR bits
     static constexpr uint8_t ICR_TA  = 1 << 0;
     static constexpr uint8_t ICR_TB  = 1 << 1;
+    static constexpr uint8_t ICR_TOD = 1 << 2;
     static constexpr uint8_t ICR_IR  = 1 << 7;
 
     // CRA bits
@@ -82,37 +78,71 @@ public:
     static constexpr uint8_t CRA_ONESHOT = 1 << 3;
     static constexpr uint8_t CRA_LOAD    = 1 << 4;
 
+    // CRB bits
+    static constexpr uint8_t CRB_START   = 1 << 0;
+    static constexpr uint8_t CRB_ONESHOT = 1 << 3;
+    static constexpr uint8_t CRB_LOAD    = 1 << 4;
+    static constexpr uint8_t CRB_INMODE  = 1 << 6;  // 0=ϕ2, 1=count TA underflows
+    static constexpr uint8_t CRB_ALARM   = 1 << 7;  // 0=write TOD time, 1=write alarm
+
 private:
     // Port registers
-    uint8_t pra_  = 0xFF;  // Port A data
-    uint8_t prb_  = 0xFF;  // Port B data
-    uint8_t ddra_ = 0x00;  // Port A direction (all input)
-    uint8_t ddrb_ = 0x00;  // Port B direction (all input)
+    uint8_t pra_  = 0xFF;
+    uint8_t prb_  = 0xFF;
+    uint8_t ddra_ = 0x00;
+    uint8_t ddrb_ = 0x00;
 
     // Timer A
-    uint16_t timerALatch_   = 0xFFFF;  // reload value
-    uint16_t timerACounter_ = 0xFFFF;  // running counter
-    uint8_t  cra_           = 0x00;    // Control Register A
+    uint16_t timerALatch_   = 0xFFFF;
+    uint16_t timerACounter_ = 0xFFFF;
+    uint8_t  cra_           = 0x00;
 
-    // Timer B (stub — stores values, no countdown)
+    // Timer B
     uint16_t timerBLatch_   = 0xFFFF;
+    uint16_t timerBCounter_ = 0xFFFF;
     uint8_t  crb_           = 0x00;
 
-    // TOD stubs
-    uint8_t tod10_  = 0x00;
-    uint8_t todSec_ = 0x00;
-    uint8_t todMin_ = 0x00;
-    uint8_t todHr_  = 0x00;
+    // TOD — BCD clock
+    uint8_t tod10_  = 0x00;   // tenths of seconds (0–9)
+    uint8_t todSec_ = 0x00;   // seconds (BCD 0x00–0x59)
+    uint8_t todMin_ = 0x00;   // minutes (BCD 0x00–0x59)
+    uint8_t todHr_  = 0x01;   // hours   (BCD 0x01–0x12, bit 7 = PM)
+
+    // TOD alarm (written when CRB bit 7 = 1)
+    uint8_t todAlarm10_  = 0x00;
+    uint8_t todAlarmSec_ = 0x00;
+    uint8_t todAlarmMin_ = 0x00;
+    uint8_t todAlarmHr_  = 0x00;
+
+    // TOD latch (frozen on HR read until 10THS read)
+    uint8_t  todLatch10_  = 0x00;
+    uint8_t  todLatchSec_ = 0x00;
+    uint8_t  todLatchMin_ = 0x00;
+    uint8_t  todLatchHr_  = 0x01;
+    bool     todLatched_  = false;
+
+    // TOD advancement: accumulates clock() calls; advances tenths every ~100 000 cycles
+    uint32_t todCycleAcc_    = 0;
+    uint32_t todCyclePeriod_ = 100000;  // ~1 MHz / 10 Hz
 
     // Serial data register stub
     uint8_t sdr_ = 0x00;
 
     // Interrupt state
-    uint8_t icrMask_  = 0x00;  // which sources are enabled (write side)
-    uint8_t icrFlags_ = 0x00;  // which sources have fired  (read side)
+    uint8_t icrMask_  = 0x00;
+    uint8_t icrFlags_ = 0x00;
 
     // Keyboard matrix — column bytes, active-low (0xFF = no keys pressed)
     uint8_t keyMatrix_[8] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
 
     void timerAUnderflow();
+    void timerBUnderflow();
+    void tickTOD();
+    void checkTODAlarm();
+
+    // BCD helpers
+    static uint8_t bcdInc(uint8_t bcd, uint8_t max);  // max in BCD
+    static int     bcdToInt(uint8_t bcd) {
+        return ((bcd >> 4) & 0x0F) * 10 + (bcd & 0x0F);
+    }
 };
