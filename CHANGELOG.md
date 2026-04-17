@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.11.0] - 2026-04-16
+
+### Added
+- **VIC6566 (MOS 6566/6567/8566) stub** — Video Interface Controller device (`$D000–$D3FF`)
+  - Full 64-register file with correct read/write behaviour; collision and ISR registers clear on read
+  - 320×200 RGBA framebuffer; cycle-accurate raster counter (65 cycles/line, 263 lines/frame NTSC)
+  - Raster compare IRQ — fires when raster line matches `$D011`/`$D012` and IRQ is enabled (`$D01A`)
+  - `renderFrame()` fills the active display area with the background colour (`$D021 & $0F`)
+  - Power-on defaults: DEN=1, blue background, light-blue border — screen shows immediately without ROM setup
+  - `statusLine()` shows current raster line, background colour, and DEN state in the Machine Designer panel
+- **Screen panel** now displays the live VIC framebuffer via an OpenGL texture (nearest-neighbour scaled)
+- VIC IRQ wired to the CPU IRQ line alongside CIA1
+
+### Changed
+- `Machine::buildDefaultMap()` registers VIC at `$D000–$D3FF` (before RAM in priority order)
+- Machine config save/load recognises device id `"vic"`
+
+### Planned (future revisions)
+- Character-mode rendering (reads screen matrix from RAM, renders with embedded font)
+- Border colour and border area in framebuffer
+- Sprite rendering, bitmap mode, ECM/MCM text modes
+
+---
+
 ## [0.10.0] - 2026-04-16
 
 ### Added

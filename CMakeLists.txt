@@ -86,6 +86,7 @@ set(SOURCES
     src/emulator/cpu/Disassembler.cpp
     src/emulator/devices/CIA6526.cpp
     src/emulator/devices/Memory.cpp
+    src/emulator/devices/VIC6566.cpp
 )
 
 if(APPLE)

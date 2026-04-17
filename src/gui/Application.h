@@ -6,6 +6,12 @@
 #include <unordered_set>
 #include <vector>
 
+#ifdef __APPLE__
+#  include <OpenGL/gl3.h>
+#else
+#  include <SDL_opengl.h>
+#endif
+
 #include "emulator/core/Machine.h"
 
 class Application {
@@ -23,6 +29,7 @@ private:
     SDL_Window*   window_    = nullptr;
     SDL_GLContext glContext_  = nullptr;
     bool          running_   = false;
+    GLuint        screenTex_ = 0;  // VIC framebuffer texture
 
     // -----------------------------------------------------------------------
     // Emulator — Machine owns CPU, Bus, and all devices

@@ -8,11 +8,13 @@ Machine::Machine() {
     buildDefaultMap();
     cpu8502_.connectBus(&bus_);
     cpu65c02_.connectBus(&bus_);
+    vic_.connectBus(&bus_);
 }
 
 void Machine::buildDefaultMap() {
     // Bus iterates entries in registration order — higher-priority devices
     // must be registered first so they shadow the catch-all RAM entry.
+    bus_.addDevice(0xD000, 0xD3FF, &vic_,  "VIC-IIe $D000–$D3FF");
     bus_.addDevice(0xF100, 0xF1FF, &cia1_, "CIA1 $F100–$F1FF");
     bus_.addDevice(0xF200, 0xF2FF, &cia2_, "CIA2 $F200–$F2FF");
     // CHAR_OUT is a special case handled directly in Bus before the loop;
@@ -46,7 +48,8 @@ void Machine::setCharOutCallback(std::function<void(uint8_t)> cb) {
 }
 
 void Machine::setIRQCallback(std::function<void()> cb) {
-    cia1_.onIRQ = std::move(cb);
+    cia1_.onIRQ = cb;
+    vic_.onIRQ  = std::move(cb);
 }
 
 // ---------------------------------------------------------------------------
@@ -54,6 +57,7 @@ void Machine::setIRQCallback(std::function<void()> cb) {
 // ---------------------------------------------------------------------------
 
 const char* Machine::idForDevice(const IBusDevice* dev) const {
+    if (dev == &vic_)     return "vic";
     if (dev == &cia1_)    return "cia1";
     if (dev == &cia2_)    return "cia2";
     if (dev == &ram_)     return "ram";
@@ -62,6 +66,7 @@ const char* Machine::idForDevice(const IBusDevice* dev) const {
 }
 
 IBusDevice* Machine::deviceForId(const std::string& id) {
+    if (id == "vic")      return &vic_;
     if (id == "cia1")     return &cia1_;
     if (id == "cia2")     return &cia2_;
     if (id == "ram")      return &ram_;

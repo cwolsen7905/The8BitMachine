@@ -1,6 +1,7 @@
 #include "Application.h"
 #include "emulator/core/ICPU.h"
 #include "emulator/devices/CIA6526.h"
+#include "emulator/devices/VIC6566.h"
 #include "emulator/cpu/Disassembler.h"
 #include "gui/FileDialog.h"
 
@@ -30,6 +31,8 @@ Application::Application() {
 }
 
 Application::~Application() {
+    if (screenTex_) glDeleteTextures(1, &screenTex_);
+
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
@@ -94,6 +97,16 @@ bool Application::init() {
 
     ImGui_ImplSDL2_InitForOpenGL(window_, glContext_);
     ImGui_ImplOpenGL3_Init("#version 330");
+
+    // --- VIC screen texture (320×200 RGBA, nearest-neighbour scaled) ---
+    glGenTextures(1, &screenTex_);
+    glBindTexture(GL_TEXTURE_2D, screenTex_);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+                 VIC6566::WIDTH, VIC6566::HEIGHT,
+                 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glBindTexture(GL_TEXTURE_2D, 0);
 
     // --- Wire machine callbacks ---
     machine_.setCharOutCallback([this](uint8_t c) {
@@ -309,26 +322,25 @@ void Application::drawMenuBar() {
 void Application::drawScreen() {
     ImGui::Begin("Screen", &showScreen_);
 
-    ImVec2 origin = ImGui::GetCursorScreenPos();
-    ImVec2 avail  = ImGui::GetContentRegionAvail();
+    // Upload VIC framebuffer to GPU if a new frame is ready
+    VIC6566& vic = machine_.vic();
+    if (vic.frameDirty()) {
+        glBindTexture(GL_TEXTURE_2D, screenTex_);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                        VIC6566::WIDTH, VIC6566::HEIGHT,
+                        GL_RGBA, GL_UNSIGNED_BYTE,
+                        vic.framebuffer());
+        glBindTexture(GL_TEXTURE_2D, 0);
+        vic.clearDirty();
+    }
 
-    float scale = std::min(avail.x / 320.0f, avail.y / 200.0f);
+    ImVec2 avail = ImGui::GetContentRegionAvail();
+    float scale  = std::min(avail.x / VIC6566::WIDTH, avail.y / VIC6566::HEIGHT);
     if (scale < 1.0f) scale = 1.0f;
-    const ImVec2 sz{ 320.0f * scale, 200.0f * scale };
+    const ImVec2 sz{ VIC6566::WIDTH * scale, VIC6566::HEIGHT * scale };
 
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    dl->AddRectFilled(origin, { origin.x + sz.x, origin.y + sz.y },
-                      IM_COL32(0, 0, 0, 255));
-    dl->AddRect(origin, { origin.x + sz.x, origin.y + sz.y },
-                IM_COL32(55, 55, 55, 255));
+    ImGui::Image(static_cast<ImTextureID>(screenTex_), sz);
 
-    const char* label = "[ No Signal ]";
-    const ImVec2 ts   = ImGui::CalcTextSize(label);
-    dl->AddText({ origin.x + (sz.x - ts.x) * 0.5f,
-                  origin.y + (sz.y - ts.y) * 0.5f },
-                IM_COL32(40, 40, 40, 255), label);
-
-    ImGui::Dummy(sz);
     ImGui::End();
 }
 

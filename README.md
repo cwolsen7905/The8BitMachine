@@ -10,7 +10,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ---
 
-## Current State  (v0.10)
+## Current State  (v0.11)
 
 ### Machine Designer
 - **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and an optional `statusLine()` for the designer panel
@@ -148,7 +148,8 @@ the-8-bit-machine/
         │   └── Disassembler.h / .cpp  Stateless 6502 disassembler
         └── devices/
             ├── CIA6526.h / .cpp    MOS 6526 CIA (implements IBusDevice)
-            └── Memory.h / .cpp     64 KB flat RAM (implements IBusDevice)
+            ├── Memory.h / .cpp     64 KB flat RAM (implements IBusDevice)
+            └── VIC6566.h / .cpp    MOS 6566/6567 VIC-IIe stub (implements IBusDevice)
 ```
 
 ### How the address space works
@@ -159,10 +160,11 @@ Device instances are owned by `Machine`.  The default map is:
 
 | Priority | Range | Device |
 |----------|-------|--------|
-| 1 | `$F100–$F1FF` | CIA1 (MOS 6526) |
-| 2 | `$F200–$F2FF` | CIA2 (MOS 6526) |
-| 3 | `$F000` | CHAR_OUT debug port |
-| 4 | `$0000–$FFFF` | 64 KB RAM (catch-all) |
+| 1 | `$D000–$D3FF` | VIC-IIe (MOS 6566) |
+| 2 | `$F100–$F1FF` | CIA1 (MOS 6526) |
+| 3 | `$F200–$F2FF` | CIA2 (MOS 6526) |
+| 4 | `$F000` | CHAR_OUT debug port |
+| 5 | `$0000–$FFFF` | 64 KB RAM (catch-all) |
 
 ### Adding a new device
 
@@ -197,7 +199,7 @@ Device instances are owned by `Machine`.  The default map is:
 - [ ] Machine Designer: add / remove / rewire devices at runtime via UI
 - [x] **JSON machine config** — save and load machine definitions (File → Save/Load Machine Config)
 - [x] **Second CPU (WDC 65C02)** — selectable at runtime via Machine Designer; 27 CMOS opcode patches, JMP indirect bug fixed
-- [ ] VIC-IIe video stub → render to Screen panel texture
+- [x] **VIC-IIe stub** (`$D000–$D3FF`) — register file, raster IRQ, background colour rendered to Screen panel via OpenGL texture
 - [ ] SID audio stub (MOS 6581/8580)
 - [ ] Keyboard input via CIA1 matrix
 - [ ] Proper ROM regions and bank switching
