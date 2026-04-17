@@ -58,7 +58,8 @@ void Bus::reset() {
 
 void Bus::clock() {
     for (auto& e : devices_)
-        if (e.device) e.device->clock();
+        if (e.device && noAutoClk_.find(e.device) == noAutoClk_.end())
+            e.device->clock();
 }
 
 // ---------------------------------------------------------------------------

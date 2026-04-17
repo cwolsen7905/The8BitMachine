@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -56,7 +57,11 @@ public:
     // Lifecycle
     // -----------------------------------------------------------------------
     void reset();   // reset all registered devices
-    void clock();   // clock all registered devices one cycle
+    void clock();   // clock all registered devices one cycle (skips noAutoClk set)
+
+    // Devices in this set are skipped by clock() — used by Machine so fixed
+    // chips (VIC/SID/CIA) are always clocked directly, never double-clocked.
+    void setNoAutoClk(IBusDevice* dev) { noAutoClk_.insert(dev); }
 
     // -----------------------------------------------------------------------
     // CPU-facing read / write
@@ -66,4 +71,5 @@ public:
 
 private:
     std::vector<DeviceEntry> devices_;
+    std::unordered_set<IBusDevice*> noAutoClk_;
 };

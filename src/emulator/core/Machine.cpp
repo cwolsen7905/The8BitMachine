@@ -5,6 +5,13 @@
 #include <iomanip>
 
 Machine::Machine() {
+    // Fixed chips are always clocked directly in Machine::clock(); the bus
+    // must not also clock them or they'd run at double speed in default mode.
+    bus_.setNoAutoClk(&vic_);
+    bus_.setNoAutoClk(&sid_);
+    bus_.setNoAutoClk(&cia1_);
+    bus_.setNoAutoClk(&cia2_);
+
     buildDefaultMap();
     cpu6510_.connectBus(&bus_);
     cpu8502_.connectBus(&bus_);
@@ -193,7 +200,11 @@ void Machine::reset() {
 }
 
 void Machine::clock() {
-    bus_.clock();   // ticks CIA1 + CIA2 (skips nullptr sentinel)
+    vic_.clock();
+    sid_.clock();
+    cia1_.clock();
+    cia2_.clock();
+    bus_.clock();   // ticks dynamic devices; skips the four fixed chips above
 }
 
 bool Machine::selectCPU(const std::string& name) {
