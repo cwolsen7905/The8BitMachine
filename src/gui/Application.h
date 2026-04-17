@@ -51,7 +51,7 @@ private:
     bool showScreen_   = true;
     bool showTerminal_ = true;
     bool showCpuState_ = true;
-    bool showDisasm_   = false;
+    bool showDisasm_   = true;
     bool showMemView_  = false;
     bool showDesigner_ = false;
 
