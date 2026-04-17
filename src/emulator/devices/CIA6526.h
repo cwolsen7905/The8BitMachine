@@ -40,6 +40,18 @@ public:
     // Callback fired when an unmasked interrupt fires.
     std::function<void()> onIRQ;
 
+    // Non-destructive register peeks (for UI display — do NOT use read() for ICR).
+    uint16_t timerACounter() const { return timerACounter_; }
+    uint16_t timerBCounter() const { return timerBCounter_; }
+    uint8_t  crA()           const { return cra_; }
+    uint8_t  crB()           const { return crb_; }
+    uint8_t  icrFlags()      const { return icrFlags_; }
+    uint8_t  icrMask()       const { return icrMask_; }
+    uint8_t  todTenths()     const { return tod10_ & 0x0F; }
+    uint8_t  todSec()        const { return todSec_; }
+    uint8_t  todMin()        const { return todMin_; }
+    uint8_t  todHr()         const { return todHr_; }
+
     // -----------------------------------------------------------------------
     // Keyboard matrix — 8 columns × 8 rows, active-low.
     // col = PA bit index (0–7), row = PB bit index (0–7).

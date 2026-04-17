@@ -563,18 +563,36 @@ void Application::drawCpuState() {
     ImGui::TextUnformatted("CIA1");
     ImGui::Separator();
 
-    const CIA6526& c   = machine_.cia1();
-    const uint8_t  cra  = c.read(CIA6526::REG_CRA);
-    const uint16_t taLo = c.read(CIA6526::REG_TALO);
-    const uint16_t taHi = c.read(CIA6526::REG_TAHI);
-    const uint16_t ta   = (taHi << 8) | taLo;
-    const uint8_t  icr  = c.read(CIA6526::REG_ICR);
+    {
+        const CIA6526& c = machine_.cia1();
 
-    ImGui::Text("Timer A  $%04X", (unsigned)ta);
-    ImGui::Text("CRA      $%02X  %s",
-        (unsigned)cra,
-        (cra & CIA6526::CRA_START) ? "RUN" : "STP");
-    ImGui::Text("ICR      $%02X", (unsigned)icr);
+        // Timer A
+        ImGui::Text("Timer A  $%04X  CRA $%02X  %s",
+            (unsigned)c.timerACounter(),
+            (unsigned)c.crA(),
+            (c.crA() & CIA6526::CRA_START) ? "RUN" : "STP");
+
+        // Timer B
+        ImGui::Text("Timer B  $%04X  CRB $%02X  %s  %s",
+            (unsigned)c.timerBCounter(),
+            (unsigned)c.crB(),
+            (c.crB() & CIA6526::CRB_START) ? "RUN" : "STP",
+            (c.crB() & CIA6526::CRB_INMODE) ? "cnt:TA" : "cnt:ϕ2");
+
+        // ICR — non-destructive peek (flags | mask)
+        ImGui::Text("ICR flg  $%02X  mask $%02X",
+            (unsigned)c.icrFlags(),
+            (unsigned)c.icrMask());
+
+        // TOD
+        uint8_t hr  = c.todHr();
+        ImGui::Text("TOD      %02d:%02d:%02d.%d %s",
+            (((hr & 0x70) >> 4) * 10 + (hr & 0x0F)),
+            ((c.todMin() >> 4) * 10 + (c.todMin() & 0x0F)),
+            ((c.todSec() >> 4) * 10 + (c.todSec() & 0x0F)),
+            (int)c.todTenths(),
+            (hr & 0x80) ? "PM" : "AM");
+    }
 
     ImGui::End();
 }
