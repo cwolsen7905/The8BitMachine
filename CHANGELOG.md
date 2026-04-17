@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.26.0] - 2026-04-17
+
+### Added
+- **Zilog Z80 CPU** — complete documented instruction set: all unprefixed opcodes (structured x/y/z/p/q decode), CB prefix (RLC/RRC/RL/RR/SLA/SRA/SLL/SRL + BIT/RES/SET), ED prefix (block moves LDIR/LDDR/CPIR/CPDR/INI/IND/OUTI/OUTD, IN/OUT r,(C), SBC/ADC HL,rp, 16-bit LD (nn)/rp, NEG, RETN/RETI, IM 0/1/2, LD A/I/R, RLD/RRD), DD/FD prefix (IX/IY indexed, (IX+d)/(IY+d)), DDCB/FDCB indexed bit operations; interrupts IM 0/1/2 and NMI; EI delay (IRQ suppressed for one instruction after EI); port I/O via `setPortHandlers()` callbacks; selectable from the Machine Designer CPU dropdown
+- **ZX Spectrum 48K preset** (`File → Load Preset → ZX Spectrum 48K`) — loads 16 KB ROM at `$0000–$3FFF`, maps 48 KB RAM at `$4000–$FFFF`, switches to Zilog Z80 CPU, wires ULA port I/O and frame interrupt
+- **ULA device** — ZX Spectrum Uncommitted Logic Array: 352×272 RGBA framebuffer (48 px border each side); correct Spectrum pixel address decode and 8×8 attribute cell rendering; 16-colour palette (normal + bright); flash toggle every 16 frames; port `$FE` OUT sets border colour, IN returns 8-row keyboard matrix (active-low, upper address byte selects rows); frame IRQ every 69888 T-states (50 Hz at 3.5 MHz); ImGui panel shows border colour swatch, frame counter, and key matrix state; selectable in Machine Designer Add Device dropdown
+- **Spectrum keyboard routing** — all 40 Spectrum keys mapped from SDL scancodes to ULA matrix (row 0–7, bit 0–4); Ctrl = Sym Shift; cursor keys generate Caps+digit combos; routing activates automatically when the ULA screen is the active display
+- **Dynamic screen support** — `Machine::screenInfo()` returns the active framebuffer and dimensions regardless of preset; Application GPU texture recreated on dimension change so VIC (400×280) and ULA (352×272) screens both display correctly
+- **`presets/spectrum48.json`** — Spectrum 48K preset JSON (3.5 MHz, single ROM slot)
+
+### Changed
+- Machine Designer CPU dropdown now includes **Zilog Z80** alongside MOS 8502, MOS 6510, and WDC 65C02
+- `Machine::reset()` now also resets the ULA
+
+---
+
 ## [0.25.0] - 2026-04-17
 
 ### Added

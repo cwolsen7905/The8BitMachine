@@ -118,15 +118,20 @@ bool Application::init() {
     ImGui_ImplSDL2_InitForOpenGL(window_, glContext_);
     ImGui_ImplOpenGL3_Init("#version 330");
 
-    // --- VIC screen texture (320×200 RGBA, nearest-neighbour scaled) ---
-    glGenTextures(1, &screenTex_);
-    glBindTexture(GL_TEXTURE_2D, screenTex_);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                 VIC6566::WIDTH, VIC6566::HEIGHT,
-                 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    // --- Screen texture — sized to the initial screen (VIC); recreated on preset change ---
+    {
+        auto info = machine_.screenInfo();
+        screenTexW_ = info.width;
+        screenTexH_ = info.height;
+        glGenTextures(1, &screenTex_);
+        glBindTexture(GL_TEXTURE_2D, screenTex_);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+                     screenTexW_, screenTexH_,
+                     0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
 
     // --- Wire machine callbacks ---
     machine_.setCharOutCallback([this](uint8_t c) {
@@ -226,13 +231,84 @@ void Application::processEvents() {
                 }
             }
 
-            // Route to CIA1 keyboard matrix when screen has focus
+            // Route to the active machine's keyboard matrix when screen has focus
             if (keyboardCaptured_) {
                 if (sym == SDLK_ESCAPE) {
                     if (pressed) keyboardCaptured_ = false;
+                } else if (machine_.screenInfo().pixels == machine_.ula().framebuffer()) {
+                    // ---- ZX Spectrum keyboard (ULA) ----
+                    // Matrix: 8 rows × 5 bits (active-low).
+                    // Row selected by address line (A8-A15 = 0); bit 0 = innermost key.
+                    int specRow = -1, specBit = -1;
+                    switch (sym) {
+                        // Row 0 (A8=0): B N M SymShift Space
+                        case SDLK_b:                    specRow=0; specBit=0; break;
+                        case SDLK_n:                    specRow=0; specBit=1; break;
+                        case SDLK_m:                    specRow=0; specBit=2; break;
+                        case SDLK_LCTRL:
+                        case SDLK_RCTRL:                specRow=0; specBit=3; break;  // Sym Shift
+                        case SDLK_SPACE:                specRow=0; specBit=4; break;
+                        // Row 1 (A9=0): H J K L Enter
+                        case SDLK_h:                    specRow=1; specBit=0; break;
+                        case SDLK_j:                    specRow=1; specBit=1; break;
+                        case SDLK_k:                    specRow=1; specBit=2; break;
+                        case SDLK_l:                    specRow=1; specBit=3; break;
+                        case SDLK_RETURN:               specRow=1; specBit=4; break;
+                        // Row 2 (A10=0): Y U I O P
+                        case SDLK_y:                    specRow=2; specBit=0; break;
+                        case SDLK_u:                    specRow=2; specBit=1; break;
+                        case SDLK_i:                    specRow=2; specBit=2; break;
+                        case SDLK_o:                    specRow=2; specBit=3; break;
+                        case SDLK_p:                    specRow=2; specBit=4; break;
+                        // Row 3 (A11=0): 6 7 8 9 0
+                        case SDLK_6:                    specRow=3; specBit=0; break;
+                        case SDLK_7:                    specRow=3; specBit=1; break;
+                        case SDLK_8:                    specRow=3; specBit=2; break;
+                        case SDLK_9:                    specRow=3; specBit=3; break;
+                        case SDLK_0:                    specRow=3; specBit=4; break;
+                        // Row 4 (A12=0): 5 4 3 2 1
+                        case SDLK_5:                    specRow=4; specBit=0; break;
+                        case SDLK_4:                    specRow=4; specBit=1; break;
+                        case SDLK_3:                    specRow=4; specBit=2; break;
+                        case SDLK_2:                    specRow=4; specBit=3; break;
+                        case SDLK_1:                    specRow=4; specBit=4; break;
+                        // Row 5 (A13=0): T R E W Q
+                        case SDLK_t:                    specRow=5; specBit=0; break;
+                        case SDLK_r:                    specRow=5; specBit=1; break;
+                        case SDLK_e:                    specRow=5; specBit=2; break;
+                        case SDLK_w:                    specRow=5; specBit=3; break;
+                        case SDLK_q:                    specRow=5; specBit=4; break;
+                        // Row 6 (A14=0): G F D S A
+                        case SDLK_g:                    specRow=6; specBit=0; break;
+                        case SDLK_f:                    specRow=6; specBit=1; break;
+                        case SDLK_d:                    specRow=6; specBit=2; break;
+                        case SDLK_s:                    specRow=6; specBit=3; break;
+                        case SDLK_a:                    specRow=6; specBit=4; break;
+                        // Row 7 (A15=0): V C X Z CapsShift
+                        case SDLK_v:                    specRow=7; specBit=0; break;
+                        case SDLK_c:                    specRow=7; specBit=1; break;
+                        case SDLK_x:                    specRow=7; specBit=2; break;
+                        case SDLK_z:                    specRow=7; specBit=3; break;
+                        case SDLK_LSHIFT:
+                        case SDLK_RSHIFT:               specRow=7; specBit=4; break;  // Caps Shift
+                        // Cursor keys → Caps+5/6/7/8 combos (common Spectrum idiom)
+                        case SDLK_LEFT:   machine_.ula().setKey(7,4,pressed);
+                                          specRow=3; specBit=4; break;  // Caps+0 = DELETE
+                        case SDLK_RIGHT:  machine_.ula().setKey(7,4,pressed);
+                                          specRow=3; specBit=2; break;  // Caps+8
+                        case SDLK_DOWN:   machine_.ula().setKey(7,4,pressed);
+                                          specRow=3; specBit=1; break;  // Caps+7
+                        case SDLK_UP:     machine_.ula().setKey(7,4,pressed);
+                                          specRow=3; specBit=0; break;  // Caps+6
+                        case SDLK_BACKSPACE: machine_.ula().setKey(7,4,pressed);
+                                          specRow=3; specBit=4; break;  // Caps+0 = DELETE
+                        default: break;
+                    }
+                    if (specRow >= 0)
+                        machine_.ula().setKey(specRow, specBit, pressed);
                 } else {
-                    // C64 keyboard matrix — PA bit = col, PB bit = row (active-low).
-                    // Reference: https://www.c64-wiki.com/wiki/Keyboard
+                    // ---- C64 keyboard matrix (CIA1) ----
+                    // PA bit = col, PB bit = row (active-low).
                     int col = -1, row = -1;
                     switch (sym) {
                         // Standard C64 matrix: col = PA bit, row = PB bit.
@@ -322,7 +398,7 @@ void Application::processEvents() {
                         lastKeyCol_  = -1;
                         lastKeyRow_  = -1;
                     }
-                }
+                }  // end C64 branch
             }
         }
     }
@@ -516,22 +592,40 @@ void Application::drawMenuBar() {
 void Application::drawScreen() {
     ImGui::Begin("Screen", &showScreen_);
 
-    // Upload VIC framebuffer to GPU if a new frame is ready
-    VIC6566& vic = machine_.vic();
-    if (vic.frameDirty()) {
-        glBindTexture(GL_TEXTURE_2D, screenTex_);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                        VIC6566::WIDTH, VIC6566::HEIGHT,
-                        GL_RGBA, GL_UNSIGNED_BYTE,
-                        vic.framebuffer());
-        glBindTexture(GL_TEXTURE_2D, 0);
-        vic.clearDirty();
+    auto info = machine_.screenInfo();
+    if (info.pixels && info.width > 0 && info.height > 0) {
+        // Recreate texture if screen dimensions changed (preset switch)
+        if (info.width != screenTexW_ || info.height != screenTexH_) {
+            glDeleteTextures(1, &screenTex_);
+            glGenTextures(1, &screenTex_);
+            glBindTexture(GL_TEXTURE_2D, screenTex_);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+                         info.width, info.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            screenTexW_ = info.width;
+            screenTexH_ = info.height;
+        }
+
+        // VIC has a dirty flag; ULA and others always upload every frame
+        VIC6566& vic = machine_.vic();
+        bool vicActive = (info.pixels == vic.framebuffer());
+        if (!vicActive || vic.frameDirty()) {
+            glBindTexture(GL_TEXTURE_2D, screenTex_);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                            info.width, info.height,
+                            GL_RGBA, GL_UNSIGNED_BYTE, info.pixels);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            if (vicActive) vic.clearDirty();
+        }
     }
 
     ImVec2 avail = ImGui::GetContentRegionAvail();
-    float scale  = std::min(avail.x / VIC6566::WIDTH, avail.y / VIC6566::HEIGHT);
+    float  w     = info.width  > 0 ? float(info.width)  : 1.0f;
+    float  h     = info.height > 0 ? float(info.height) : 1.0f;
+    float  scale = std::min(avail.x / w, avail.y / h);
     if (scale < 1.0f) scale = 1.0f;
-    const ImVec2 sz{ VIC6566::WIDTH * scale, VIC6566::HEIGHT * scale };
+    const ImVec2 sz{ w * scale, h * scale };
 
     ImGui::Image(static_cast<ImTextureID>(screenTex_), sz);
 
@@ -1661,6 +1755,10 @@ void Application::buildActivePreset() {
             presetRomPaths_["basic"],
             presetRomPaths_["char"],
             keyMatrixTranspose_);
+    } else if (preset.presetType == "spectrum48") {
+        result = machine_.buildSpectrumPreset(presetRomPaths_["rom"]);
+        // Reset active screen texture dimensions to force GPU texture recreation
+        screenTexW_ = screenTexH_ = 0;
     } else {
         presetMsg_ = "[Preset] Unknown preset type: " + preset.presetType;
         return;

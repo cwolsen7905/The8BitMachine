@@ -11,6 +11,7 @@ Machine::Machine() : c64IOSpace_(&vic_, &sid_, &cia1_, &cia2_) {
     bus_.setNoAutoClk(&sid_);
     bus_.setNoAutoClk(&cia1_);
     bus_.setNoAutoClk(&cia2_);
+    bus_.setNoAutoClk(&ula_);
 
     buildDefaultMap();
     cpu6510_.connectBus(&bus_);
@@ -18,6 +19,10 @@ Machine::Machine() : c64IOSpace_(&vic_, &sid_, &cia1_, &cia2_) {
     cpu65c02_.connectBus(&bus_);
     cpuZ80_.connectBus(&bus_);
     vic_.connectBus(&bus_);
+    ula_.connectBus(&bus_);
+
+    // Default screen shows VIC framebuffer
+    activeScreen_ = { VIC6566::WIDTH, VIC6566::HEIGHT, vic_.framebuffer() };
 }
 
 MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
@@ -208,11 +213,55 @@ void Machine::unmountAt(size_t busIndex) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Spectrum 48K preset
+// ---------------------------------------------------------------------------
+
+MachineConfigResult Machine::buildSpectrumPreset(const std::string& romPath) {
+    hasPreset_ = false;
+    bus_.clearDevices();
+    dynamicDevices_.clear();
+
+    // 16 KB ROM at $0000–$3FFF
+    ROM* rom = mountROM(0x0000, 0x3FFF, "Spectrum ROM $0000-$3FFF", romPath);
+    if (!rom)
+        return { false, "Cannot load Spectrum ROM: " + romPath };
+
+    // 48 KB RAM at $4000–$FFFF (screen RAM lives in $4000–$57FF / attrs $5800–$5AFF)
+    bus_.addDevice(0x4000, 0xFFFF, &ram_, "RAM  $4000–$FFFF");
+
+    // Wire ULA port I/O to the Z80
+    cpuZ80_.setPortHandlers(
+        [this](uint16_t port) -> uint8_t { return ula_.portRead(port); },
+        [this](uint16_t port, uint8_t val) { ula_.portWrite(port, val); }
+    );
+
+    // ULA fires interrupt → Z80 IRQ
+    ula_.onIRQ = [this]() { cpuZ80_.irq(); };
+
+    ula_.reset();
+    ula_.connectBus(&bus_);
+
+    // Switch to Z80 and reset
+    activeCpu_ = &cpuZ80_;
+    activeCpu_->reset();
+
+    // Point the active screen at the ULA framebuffer
+    activeScreen_ = { ULA::WIDTH, ULA::HEIGHT, ula_.framebuffer() };
+
+    hasPreset_ = true;
+    preset_.name  = "spectrum48";
+    preset_.kernalPath = romPath;
+
+    return { true, "Spectrum 48K preset built." };
+}
+
 void Machine::reset() {
     vic_.reset();
     sid_.reset();
     cia1_.reset();
     cia2_.reset();
+    ula_.reset();
     bus_.reset();   // resets RAM and any dynamic devices
     activeCpu_->reset();
 }
@@ -222,7 +271,8 @@ void Machine::clock() {
     sid_.clock();
     cia1_.clock();
     cia2_.clock();
-    bus_.clock();   // ticks dynamic devices; skips the four fixed chips above
+    ula_.clock();
+    bus_.clock();   // ticks dynamic devices; skips fixed chips above
 }
 
 bool Machine::selectCPU(const std::string& name) {
@@ -299,7 +349,7 @@ std::vector<Machine::PanelEntry> Machine::panelDevices() {
         return dev->deviceName();  // no address found — just the chip name
     };
 
-    for (IBusDevice* dev : std::initializer_list<IBusDevice*>{&vic_, &sid_, &cia1_, &cia2_}) {
+    for (IBusDevice* dev : std::initializer_list<IBusDevice*>{&vic_, &sid_, &cia1_, &cia2_, &ula_}) {
         if (dev->hasPanel() && !onBus.count(dev))
             result.push_back({ findAddr(dev), dev });
     }
@@ -313,6 +363,7 @@ const char* Machine::idForDevice(const IBusDevice* dev) const {
     if (dev == &cia1_)       return "cia1";
     if (dev == &cia2_)       return "cia2";
     if (dev == &ram_)        return "ram";
+    if (dev == &ula_)         return "ula";
     if (dev == &c64IOSpace_) return "c64_io_space";
     if (dev == nullptr)      return "char_out";
     for (const auto& d : dynamicDevices_) {
@@ -332,6 +383,7 @@ IBusDevice* Machine::deviceForId(const std::string& id) {
     if (id == "cia1")         return &cia1_;
     if (id == "cia2")         return &cia2_;
     if (id == "ram")          return &ram_;
+    if (id == "ula")          return &ula_;
     if (id == "c64_io_space") return &c64IOSpace_;
     if (id == "char_out")     return nullptr;
     return nullptr;

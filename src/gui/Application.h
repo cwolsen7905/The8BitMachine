@@ -52,7 +52,9 @@ private:
     SDL_GLContext      glContext_   = nullptr;
     SDL_AudioDeviceID  audioDevice_ = 0;
     bool               running_     = false;
-    GLuint             screenTex_   = 0;  // VIC framebuffer texture
+    GLuint             screenTex_   = 0;  // active screen texture
+    int                screenTexW_  = 0;  // dimensions of the allocated texture
+    int                screenTexH_  = 0;
 
     // -----------------------------------------------------------------------
     // Emulator — Machine owns CPU, Bus, and all devices

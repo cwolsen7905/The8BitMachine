@@ -10,7 +10,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ---
 
-## Current State  (v0.25)
+## Current State  (v0.26)
 
 ### Machine Designer
 - **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and an optional `statusLine()` for the designer panel
@@ -21,7 +21,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ### CPU  (selectable)
 
-**MOS 8502** (default), **MOS 6510**, and **WDC 65C02** — all selectable live in the Machine Designer panel.
+**MOS 8502** (default), **MOS 6510**, **WDC 65C02**, and **Zilog Z80** — all selectable live in the Machine Designer panel.
 
 Shared (`CPU6502Base`):
 - All 56 legal 6502 opcodes, all 13 addressing modes
@@ -38,10 +38,19 @@ WDC 65C02 additions:
 - Zero-page indirect `($zp)` and absolute indexed indirect `($abs,X)` addressing modes
 - JMP indirect page-wrap bug fixed
 
+Zilog Z80:
+- Full register set: main (AF, BC, DE, HL) + alternate (AF′ BC′ DE′ HL′), IX, IY, I, R, SP, PC
+- All unprefixed opcodes + prefix groups CB, ED, DD (IX), FD (IY), DDCB, FDCB
+- Structured decode (x/y/z/p/q bit fields) covering every documented opcode
+- Block transfers: LDIR, LDDR, CPIR, CPDR, INIR, INDR, OTIR, OTDR
+- Interrupt modes IM 0 / IM 1 / IM 2; EI delay (one instruction after EI before IRQ is taken)
+- NMI edge-triggered at `$0066`; RETN restores IFF1 from IFF2
+- Port I/O callbacks: `setPortHandlers(read, write)` for IN/OUT routing
+
 ### GUI
 - Dockable panel layout (Dear ImGui docking branch)
 - Standard menu bar — File / Emulator / View / Debug / Help
-- **Screen panel** — 400×280 live VIC framebuffer (320×200 active area + 40px border); border and background colours driven by `$D020`/`$D021`; 40×25 character mode renders glyphs from an embedded open 8×8 font; foreground color read per-character from color RAM (`$D800`); screen codes `$80–$FF` render in reverse video; X/Y fine scroll applied to character grid
+- **Screen panel** — live framebuffer display; dimensions switch dynamically when the preset changes (400×280 for C64/VIC, 352×272 for ZX Spectrum/ULA); C64: 320×200 active area + 40 px border, character mode with embedded font, color RAM, fine scroll; Spectrum: 256×192 active area + 48 px / 40 px border, pixel+attribute rendering with flash, 16-colour palette (normal + bright)
 - **Terminal panel** — green-on-black scrollable log with command input
 - **CPU State panel** — live register and flag display, CIA1 timer status, cycle counter
 - **Disassembler panel** (Debug menu) — live disassembly with Follow PC, Go To address, highlighted current instruction; click any row to toggle a breakpoint (red `●`); emulator halts automatically when PC hits a breakpoint
@@ -49,7 +58,7 @@ WDC 65C02 additions:
 - **Per-device panels** (View menu) — each chip with `hasPanel()` gets its own dockable window; CIA shows timers/ICR/TOD/ports, VIC shows raster/colours/control, SID shows voices/filter/volume; panels are listed dynamically based on what is mounted
 - **Machine Designer panel** (View menu) — interactive address map: click Start/End addresses to edit inline (invalid values stay red, Tab commits like Enter, clicking away persists red so you can re-enter), drag `=` handle to reorder priority, Sort by Address, Reset to Defaults; validation highlights unreachable entries (orange) and invalid ranges (red), warns when no catch-all entry is present; **Contained Devices** section lists chips embedded inside container devices (VIC/SID/CIA inside C64IOSpace) with live computed addresses
 - **ROM loading** (File → Load ROM) — native macOS file dialog; supports raw `.bin` and Commodore `.prg`; resets CPU and jumps disassembler to load address
-- **Keyboard capture** — click the Screen panel to direct keyboard input into the CIA1 matrix; green border overlay and status label indicate active capture; Escape releases
+- **Keyboard capture** — click the Screen panel to direct keyboard input into the active machine's matrix; green border overlay and status label indicate active capture; Escape releases; C64 preset routes SDL keys to CIA1 matrix; ZX Spectrum preset routes SDL keys to the ULA 8×5 keyboard matrix (Caps Shift = Left Shift, Symbol Shift = Ctrl; cursor keys emulated via Caps+5/6/7/8)
 - **Machine config save / load** (File → Save / Load Machine Config) — persists the address-space wiring as a JSON file so machines can be recalled and shared; `cycles_per_frame` is written/read so emulator speed is restored automatically
 - **Bundled JSON presets** (File → Load Preset) — `presets/` folder next to the executable is scanned at startup; each `.json` file appears as a submenu entry; a generic ROM picker dialog collects the required ROM images and builds the machine; C64 preset auto-sets ~1 MHz clock speed
 - **C64IOSpace as designer device** — the C64 I/O dispatcher appears in the Machine Designer Add Device dropdown (`C64 I/O Space`) so custom machines can mount it manually
@@ -62,6 +71,8 @@ WDC 65C02 additions:
 - **CIA1 (MOS 6526) at `$F100–$F1FF`** — Timer A + Timer B (ϕ2 or TA-underflow count mode), full ADSR envelope, ICR mask/flags, TOD BCD clock with alarm and latch-on-read, data ports PRA/PRB; CIA1 IRQ wired to CPU IRQ line
 - **CIA2 at `$F200–$F2FF`** — same full implementation as CIA1
 - **SID6581 at `$D400–$D7FF`** — all 29 MOS 6581/8580 registers; SDL audio output at 44100 Hz; triangle/sawtooth/pulse/noise waveforms with correct 23-bit LFSR; full ADSR envelopes with datasheet-accurate timing; master volume; Machine Designer shows volume, filter cutoff, and voice 1 frequency
+- **ZX Spectrum 48K preset** — `presets/spectrum48.json`; ROM picker loads the 16 KB Spectrum ROM at `$0000–$3FFF`; 48 KB RAM at `$4000–$FFFF`; Zilog Z80 CPU; ULA device handles display, keyboard, and frame interrupt
+- **ULA (ZX Spectrum ULA)** — 352×272 RGBA framebuffer; pixel data decoded from `$4000` using the Spectrum address interleaving formula; 8×8 attribute cells at `$5800` (ink/paper/bright/flash); frame IRQ fired every 69 888 T-states (50 Hz at 3.5 MHz); port `$FE` read returns keyboard half-row, write sets border colour; flash toggles every 16 frames; drawPanel shows border colour, frame counter, flash state, and key matrix
 - **CHAR_OUT port at `$F000`** — CPU writes here appear in the Terminal panel (line-buffered; flushed on LF)
 - **F10 instruction step** — runs the CPU until the current instruction completes
 - **Configurable clock speed** — Emulator → Speed presets: ~60 kHz (debug), ~500 kHz, ~1 MHz, ~2 MHz; effective MHz shown in the menu bar
@@ -204,8 +215,9 @@ Device instances are owned by `Machine`.  The default map is:
 - [x] **Emulator speed persistence** — `cycles_per_frame` saved/loaded in machine config JSON; C64 preset auto-sets ~1 MHz
 - [x] **Bundled JSON preset system** — `presets/` folder with machine definitions scanned at startup; generic ROM picker dialog; File → Load Preset submenu
 - [x] **Machine Designer: Contained Devices** — chips inside container devices (VIC/SID/CIA inside C64IOSpace) shown in their own table with live computed addresses
+- [x] **Zilog Z80 CPU** — full instruction set (unprefixed + CB/ED/DD/FD/DDCB/FDCB prefixes), alternate registers, IX/IY indexed, IM 0/1/2, EI delay, NMI at `$0066`
+- [x] **ZX Spectrum 48K preset** — ULA display (256×192 + border), 16-colour pixel+attribute rendering, flash, 50 Hz frame IRQ, 8×5 keyboard matrix, border colour via port `$FE`
 - [ ] C128 MMU model (configurable bank sizes, multi-region, hardware-accurate)
-- [ ] ZX Spectrum / Z80 CPU
 
 ---
 

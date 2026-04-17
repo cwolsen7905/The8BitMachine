@@ -10,6 +10,7 @@
 #include "emulator/devices/ROM.h"
 #include "emulator/devices/SwitchableRegion.h"
 #include "emulator/devices/SID6581.h"
+#include "emulator/devices/ULA.h"
 #include "emulator/devices/VIC6566.h"
 #include "emulator/cpu/CPU6510.h"
 #include "emulator/cpu/CPU8502.h"
@@ -21,6 +22,13 @@
 #include <memory>
 #include <string>
 #include <vector>
+
+// Active screen framebuffer descriptor — returned by Machine::screenInfo()
+struct ScreenInfo {
+    int           width  = 0;
+    int           height = 0;
+    const uint8_t* pixels = nullptr;   // RGBA, width*height*4 bytes
+};
 
 // Config save/load result
 struct MachineConfigResult {
@@ -67,11 +75,17 @@ public:
     CIA6526& cia2()   { return cia2_; }
     VIC6566& vic()    { return vic_; }
     SID6581& sid()    { return sid_; }
+    ULA&     ula()    { return ula_; }
     CPU6510& cpu6510(){ return cpu6510_; }
+    CPUZ80&  cpuZ80() { return cpuZ80_; }
 
     const CIA6526& cia1() const { return cia1_; }
     const VIC6566& vic()  const { return vic_;  }
     const SID6581& sid()  const { return sid_;  }
+    const ULA&     ula()  const { return ula_;  }
+
+    // Active screen (switches between VIC and ULA depending on preset)
+    ScreenInfo screenInfo() const { return activeScreen_; }
 
     // -----------------------------------------------------------------------
     // Lifecycle
@@ -99,6 +113,10 @@ public:
     // keyMatrixTranspose: true = MEGA65 OpenROMs (PA=rows/PB=cols),
     //                    false = standard C64 KERNAL (PA=cols/PB=rows).
     // The value is stored in the preset and round-tripped through saveConfig/loadConfig.
+    // Build a ZX Spectrum 48K memory map.  Loads the 16 KB ROM from romPath.
+    // Switches the CPU to Zilog Z80, wires the ULA port handlers, and resets.
+    MachineConfigResult buildSpectrumPreset(const std::string& romPath);
+
     MachineConfigResult buildC64Preset(const std::string& kernalPath,
                                        const std::string& basicPath,
                                        const std::string& charPath,
@@ -162,6 +180,7 @@ private:
     CIA6526    cia2_;
     VIC6566    vic_;
     SID6581    sid_;
+    ULA        ula_;
     C64IOSpace c64IOSpace_;  // pre-wired to the four fixed chips above
 
     CPU6510  cpu6510_;
@@ -171,6 +190,8 @@ private:
     ICPU*    activeCpu_ = &cpu8502_;
 
     Bus bus_;
+
+    ScreenInfo activeScreen_;
 
     void buildDefaultMap();
 
