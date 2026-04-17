@@ -18,6 +18,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Master volume register (`$D418` bits 3–0) applied to final mix
   - Register snapshot at start of each buffer avoids holding mutex during synthesis
 
+### Added (ROM)
+- `roms/sid_demo.s` — two-voice SID demo: sawtooth melody (C major scale, up and down) on voice 1, triangle bass drone on voice 2; ADSR configured for a punchy melody attack with a held bass
+
 ### Changed
 - `SID6581::write()` and `statusLine()` take a `std::mutex` lock to protect register state shared with the audio thread
 - `Application::init()` now calls `SDL_INIT_AUDIO`; audio device closed in destructor

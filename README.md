@@ -62,6 +62,7 @@ WDC 65C02 additions:
 
 ### ROM development
 - `roms/test.s` — CIA1 Timer A interrupt demo: patches the IRQ vector at runtime, programs CIA1 Timer A to fire ~5× per second (at 60 kHz debug speed), then spins in a loop while the IRQ handler writes `*` + newline to the terminal on every timer tick
+- `roms/sid_demo.s` — SID audio demo: two-voice arrangement (sawtooth melody + triangle bass drone), C major scale looping forever; load and press F5 to hear audio
 - `roms/keyboard_test.s` — CIA1 keyboard matrix scanner: scans all 8 columns each frame using active-low column masks, edge-detects newly pressed keys with a PREV table in zero page, prints `CcRr` + newline per key press to the terminal
 - `build.sh` assembles all `roms/*.s` files via ca65/ld65 before building the C++ emulator
 - Load via **File → Load ROM → `roms/keyboard_test.prg`**, press **F5**, click the Screen panel (green border appears), then type — each key press appears immediately in the Terminal
