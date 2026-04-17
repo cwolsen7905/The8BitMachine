@@ -41,6 +41,30 @@ ROM* Machine::mountROM(uint16_t start, uint16_t end,
     return ptr;
 }
 
+BankedMemory* Machine::mountBankedMemory(uint16_t primaryStart, uint16_t primaryEnd,
+                                          uint16_t bankSelectAddr, uint8_t numBanks) {
+    if (primaryEnd < primaryStart) return nullptr;
+    const uint32_t bankSize = static_cast<uint32_t>(primaryEnd - primaryStart) + 1;
+
+    auto mem  = std::make_unique<BankedMemory>(numBanks, bankSize);
+    auto port = std::make_unique<BankSelectPort>(mem.get());
+
+    BankedMemory* memPtr  = mem.get();
+    BankSelectPort* portPtr = port.get();
+
+    dynamicDevices_.push_back(std::move(mem));
+    dynamicDevices_.push_back(std::move(port));
+
+    char memLabel[64], portLabel[64];
+    std::snprintf(memLabel,  sizeof(memLabel),  "BankedRAM $%04X–$%04X (%d banks)",
+                  primaryStart, primaryEnd, numBanks);
+    std::snprintf(portLabel, sizeof(portLabel), "BankSelect $%04X", bankSelectAddr);
+
+    bus_.addDevice(primaryStart,   primaryEnd,    memPtr,  memLabel);
+    bus_.addDevice(bankSelectAddr, bankSelectAddr, portPtr, portLabel);
+    return memPtr;
+}
+
 void Machine::unmountAt(size_t busIndex) {
     if (busIndex >= bus_.devices().size()) return;
     IBusDevice* dev = bus_.devices()[busIndex].device;
@@ -97,8 +121,12 @@ const char* Machine::idForDevice(const IBusDevice* dev) const {
     if (dev == &cia2_)  return "cia2";
     if (dev == &ram_)   return "ram";
     if (dev == nullptr) return "char_out";
-    for (const auto& d : dynamicDevices_)
-        if (d.get() == dev) return "rom";
+    for (const auto& d : dynamicDevices_) {
+        if (d.get() != dev) continue;
+        if (dynamic_cast<const ROM*>(dev))            return "rom";
+        if (dynamic_cast<const BankedMemory*>(dev))   return "banked_ram";
+        if (dynamic_cast<const BankSelectPort*>(dev)) return "bank_select";
+    }
     return "unknown";
 }
 
@@ -137,11 +165,30 @@ MachineConfigResult Machine::saveConfig(const std::string& path) const {
         ss << std::setw(4) << e.end;
         entry["end"]   = ss.str();
 
+        const std::string devId = idForDevice(e.device);
+
         // Persist file path for ROM entries so they can be reloaded
-        if (std::string(idForDevice(e.device)) == "rom") {
+        if (devId == "rom") {
             const auto* rom = static_cast<const ROM*>(e.device);
             entry["path"] = rom->filePath();
         }
+
+        // Persist bank count + companion port address for banked_ram entries
+        if (devId == "banked_ram") {
+            const auto* bm = static_cast<const BankedMemory*>(e.device);
+            entry["num_banks"] = bm->numBanks();
+            // Find the companion BankSelectPort on the bus
+            for (const auto& e2 : bus_.devices()) {
+                const auto* bsp = dynamic_cast<const BankSelectPort*>(e2.device);
+                if (bsp && bsp->targetMemory() == bm) {
+                    entry["bank_select_addr"] = e2.start;
+                    break;
+                }
+            }
+        }
+
+        // bank_select entries are reconstructed via banked_ram's bank_select_addr on load.
+        if (devId == "bank_select") continue;
 
         devArray.push_back(entry);
     }
@@ -191,6 +238,11 @@ MachineConfigResult Machine::loadConfig(const std::string& path) {
             const std::string filePath = entry.value("path", "");
             if (!filePath.empty())
                 mountROM(start, end, label, filePath);
+        } else if (id == "banked_ram") {
+            const uint8_t  numBanks      = static_cast<uint8_t>(entry.value("num_banks", 4));
+            const uint16_t bankSelectAddr = static_cast<uint16_t>(
+                entry.value("bank_select_addr", 0xDFFF));
+            mountBankedMemory(start, end, bankSelectAddr, numBanks);
         } else {
             IBusDevice* dev = deviceForId(id);
             if (id != "unknown")

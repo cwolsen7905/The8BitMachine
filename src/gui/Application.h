@@ -82,6 +82,13 @@ private:
     char        designerRomStart_[5]{};
     std::string designerRomMsg_;
 
+    // Banked RAM
+    char        designerBankStart_[5]{};
+    char        designerBankEnd_[5]{};
+    char        designerBankSelAddr_[5]{};
+    char        designerBankCount_[4]{};
+    std::string designerBankMsg_;
+
     // Inline address editing
     int         designerEditRow_    = -1;
     int         designerEditCol_    = -1;  // 0=start, 1=end

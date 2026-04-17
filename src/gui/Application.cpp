@@ -1046,6 +1046,75 @@ void Application::drawMachineDesigner() {
             ImGui::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s", designerRomMsg_.c_str());
     }
 
+    // ---- Add Banked RAM ----
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "Add Banked RAM");
+    ImGui::Spacing();
+
+    if (designerBankStart_[0] == '\0') std::strncpy(designerBankStart_, "8000", 5);
+    if (designerBankEnd_[0]   == '\0') std::strncpy(designerBankEnd_,   "BFFF", 5);
+    if (designerBankSelAddr_[0] == '\0') std::strncpy(designerBankSelAddr_, "DFFF", 5);
+    if (designerBankCount_[0] == '\0') std::strncpy(designerBankCount_, "4",   4);
+
+    ImGui::TextUnformatted("Start:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(54.0f);
+    ImGui::InputText("##bks", designerBankStart_, 5,
+        ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
+    ImGui::SameLine();
+    ImGui::TextUnformatted("End:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(54.0f);
+    ImGui::InputText("##bke", designerBankEnd_, 5,
+        ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
+    ImGui::SameLine();
+    ImGui::TextUnformatted("BankSel:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(54.0f);
+    ImGui::InputText("##bkp", designerBankSelAddr_, 5,
+        ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
+    ImGui::SameLine();
+    ImGui::TextUnformatted("Banks:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(36.0f);
+    ImGui::InputText("##bkn", designerBankCount_, 4, ImGuiInputTextFlags_CharsDecimal);
+
+    ImGui::Spacing();
+    if (ImGui::Button("Add Banked RAM")) {
+        char* ep = nullptr;
+        unsigned long s  = std::strtoul(designerBankStart_,   &ep, 16);
+        unsigned long e2 = std::strtoul(designerBankEnd_,     &ep, 16);
+        unsigned long p  = std::strtoul(designerBankSelAddr_, &ep, 16);
+        int           n  = std::atoi(designerBankCount_);
+
+        if (s > 0xFFFF || e2 > 0xFFFF || e2 < s || p > 0xFFFF || n < 1 || n > 256) {
+            designerBankMsg_ = "Invalid parameters";
+        } else {
+            BankedMemory* bm = machine_.mountBankedMemory(
+                static_cast<uint16_t>(s), static_cast<uint16_t>(e2),
+                static_cast<uint16_t>(p), static_cast<uint8_t>(n));
+            if (bm) {
+                char msg[80];
+                std::snprintf(msg, sizeof(msg), "Mounted %d banks × %lu KB at $%04lX–$%04lX",
+                              n, (e2 - s + 1) / 1024, s, e2);
+                designerBankMsg_ = msg;
+            } else {
+                designerBankMsg_ = "Failed to create banked RAM";
+            }
+        }
+    }
+
+    if (!designerBankMsg_.empty()) {
+        ImGui::SameLine();
+        const bool isErr = designerBankMsg_.rfind("Failed", 0) == 0 ||
+                           designerBankMsg_.rfind("Invalid", 0) == 0;
+        if (isErr)
+            ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", designerBankMsg_.c_str());
+        else
+            ImGui::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s", designerBankMsg_.c_str());
+    }
+
     ImGui::End();
 }
 

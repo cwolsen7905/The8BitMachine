@@ -10,7 +10,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ---
 
-## Current State  (v0.18)
+## Current State  (v0.19)
 
 ### Machine Designer
 - **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and an optional `statusLine()` for the designer panel
@@ -190,7 +190,8 @@ Device instances are owned by `Machine`.  The default map is:
 - [x] **SID audio (MOS 6581/8580)** at `$D400–$D7FF` — all 4 waveforms, ADSR envelopes, master volume, SDL audio output; filter and ring/sync modulation in a future step
 - [x] **Keyboard input via CIA1 matrix** — SDL keys routed to CIA1 `setKey(col, row)`; capture focus model with visual indicator
 - [x] **ROM regions** — read-only `ROM` device; load `.bin`/`.prg` files via Machine Designer → Load ROM File; writes silently ignored; `.prg` header stripped automatically; address range auto-calculated from file size; config save/load persists ROM file paths
-- [ ] Bank switching
+- [x] **Bank switching (simple)** — `BankedMemory` device (N equal banks × window size); `BankSelectPort` companion I/O byte; Machine Designer → Add Banked RAM wires both in one step; config save/load persists bank layout
+- [ ] Advanced bank switching (configurable bank sizes, multiple independent regions, C128 MMU model)
 
 ---
 

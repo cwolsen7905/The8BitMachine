@@ -3,6 +3,8 @@
 #include "emulator/core/Bus.h"
 #include "emulator/core/ICPU.h"
 #include "emulator/devices/CIA6526.h"
+#include "emulator/devices/BankedMemory.h"
+#include "emulator/devices/BankSelectPort.h"
 #include "emulator/devices/ROM.h"
 #include "emulator/devices/SID6581.h"
 #include "emulator/devices/VIC6566.h"
@@ -90,6 +92,12 @@ public:
     // unmountAt removes the bus entry at busIndex and, if the device is
     // dynamically owned (e.g. a ROM), frees it once no other entries reference it.
     void unmountAt(size_t busIndex);
+
+    // mountBankedMemory creates N banks of bankSize bytes mapped at primaryStart–primaryEnd,
+    // with a BankSelectPort at bankSelectAddr.  Writing to bankSelectAddr selects the bank.
+    // Returns the BankedMemory pointer, or nullptr if the range is degenerate.
+    BankedMemory* mountBankedMemory(uint16_t primaryStart, uint16_t primaryEnd,
+                                    uint16_t bankSelectAddr, uint8_t numBanks);
 
     // Look up a device pointer by its config ID ("vic", "sid", "cia1", etc.)
     // Returns nullptr for "char_out" and unknown IDs.

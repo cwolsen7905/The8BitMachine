@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.19.0] - 2026-04-17
+
+### Added
+- **BankedMemory device** (`src/emulator/devices/BankedMemory`) — N equal banks of RAM mapped at one address window; `selectBank(n)` switches the visible bank; reads/writes go to the active bank; `statusLine()` shows current bank and size
+- **BankSelectPort device** (`src/emulator/devices/BankSelectPort`) — single-byte I/O port companion to `BankedMemory`; CPU write selects the bank, read returns the current bank number
+- **Machine Designer → Add Banked RAM** — Start, End, BankSel address, and Banks count fields; "Add Banked RAM" button mounts both devices in one step; success shown in green, errors in red
+- `Machine::mountBankedMemory(primaryStart, primaryEnd, bankSelectAddr, numBanks)` — creates both devices, takes ownership via `dynamicDevices_`, maps them on the bus; returns `nullptr` on degenerate range
+- Machine config save/load extended: `banked_ram` entries serialise with `num_banks` and `bank_select_addr` fields and are reconstructed via `mountBankedMemory` on load; `bank_select` entries are reconstructed automatically (not saved separately)
+
+---
+
 ## [0.18.0] - 2026-04-17
 
 ### Added
