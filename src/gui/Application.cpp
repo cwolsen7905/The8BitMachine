@@ -333,6 +333,7 @@ void Application::render() {
     if (showDisasm_)   drawDisassembler();
     if (showMemView_)  drawMemoryViewer();
     if (showDesigner_) drawMachineDesigner();
+    if (showC64Preset_) drawC64PresetDialog();
 
     // Per-device panels — one window per unique device that opted in
     {
@@ -360,6 +361,14 @@ void Application::drawMenuBar() {
     if (ImGui::BeginMenu("File")) {
         if (ImGui::MenuItem("Load ROM...", "Ctrl+O"))
             loadRomDialog();
+
+        ImGui::Separator();
+
+        if (ImGui::BeginMenu("Presets")) {
+            if (ImGui::MenuItem("Commodore 64..."))
+                showC64Preset_ = true;
+            ImGui::EndMenu();
+        }
 
         ImGui::Separator();
 
@@ -1240,6 +1249,87 @@ void Application::drawMachineDesigner() {
             ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", designerBCMsg_.c_str());
         else
             ImGui::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s", designerBCMsg_.c_str());
+    }
+
+    ImGui::End();
+}
+
+// ---------------------------------------------------------------------------
+// C64 preset dialog
+// ---------------------------------------------------------------------------
+
+void Application::drawC64PresetDialog() {
+    ImGui::SetNextWindowSize({ 480.0f, 260.0f }, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
+                            ImGuiCond_FirstUseEver, { 0.5f, 0.5f });
+
+    if (!ImGui::Begin("Commodore 64 Preset", &showC64Preset_,
+                      ImGuiWindowFlags_NoCollapse)) {
+        ImGui::End();
+        return;
+    }
+
+    ImGui::TextWrapped(
+        "Load Commodore 64 ROM images to build a full C64 memory map.\n"
+        "All three ROMs are required.");
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    auto romRow = [&](const char* label, std::string& path) {
+        ImGui::TextUnformatted(label);
+        ImGui::SameLine(80.0f);
+        ImGui::SetNextItemWidth(260.0f);
+        char buf[512];
+        std::strncpy(buf, path.c_str(), sizeof(buf) - 1);
+        buf[sizeof(buf) - 1] = '\0';
+        ImGui::PushID(label);
+        if (ImGui::InputText("##p", buf, sizeof(buf)))
+            path = buf;
+        ImGui::SameLine();
+        if (ImGui::Button("Browse...")) {
+            const std::string title = std::string("Select ") + label;
+            const std::string sel = FileDialog::openFile(
+                title.c_str(), {"bin", "rom", "prg", ""});
+            if (!sel.empty()) path = sel;
+        }
+        ImGui::PopID();
+    };
+
+    romRow("KERNAL",  c64KernalPath_);
+    romRow("BASIC",   c64BasicPath_);
+    romRow("CHAR",    c64CharPath_);
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    const bool ready = !c64KernalPath_.empty() &&
+                       !c64BasicPath_.empty()  &&
+                       !c64CharPath_.empty();
+
+    if (!ready) ImGui::BeginDisabled();
+    if (ImGui::Button("Build C64 Machine", { 160.0f, 0.0f })) {
+        const auto result = machine_.buildC64Preset(
+            c64KernalPath_, c64BasicPath_, c64CharPath_);
+        c64Msg_ = result.message;
+        if (result.ok) {
+            cycleCount_      = 0;
+            emulatorRunning_ = false;
+            termPrint(result.message);
+            termPrint(machine_.cpu().stateString());
+            showC64Preset_ = false;
+        }
+    }
+    if (!ready) ImGui::EndDisabled();
+
+    if (!c64Msg_.empty()) {
+        ImGui::SameLine();
+        const bool isErr = c64Msg_.rfind("[C64] Machine ready", 0) != 0;
+        if (isErr)
+            ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", c64Msg_.c_str());
+        else
+            ImGui::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s", c64Msg_.c_str());
     }
 
     ImGui::End();

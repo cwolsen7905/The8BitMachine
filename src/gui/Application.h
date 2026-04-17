@@ -57,6 +57,7 @@ private:
     // UI visibility toggles
     // -----------------------------------------------------------------------
     bool showScreen_        = true;
+    bool showC64Preset_     = false;
     bool keyboardCaptured_  = false;
     bool showTerminal_ = true;
     bool showCpuState_ = true;
@@ -95,6 +96,12 @@ private:
     char        designerBankSelAddr_[5]{};
     char        designerBankCount_[4]{};
     std::string designerBankMsg_;
+
+    // C64 preset
+    std::string c64KernalPath_;
+    std::string c64BasicPath_;
+    std::string c64CharPath_;
+    std::string c64Msg_;
 
     // Switchable Region
     char        designerSRStart_[5]{};
@@ -142,4 +149,5 @@ private:
     void loadRomDialog();
     void saveMachineConfigDialog();
     void loadMachineConfigDialog();
+    void drawC64PresetDialog();
 };

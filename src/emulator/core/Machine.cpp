@@ -12,6 +12,83 @@ Machine::Machine() {
     vic_.connectBus(&bus_);
 }
 
+MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
+                                              const std::string& basicPath,
+                                              const std::string& charPath) {
+    bus_.clearDevices();
+    dynamicDevices_.clear();
+
+    // --- ROMs ---
+    ROM* kernal = mountROM(0xE000, 0xFFFF, "KERNAL $E000-$FFFF", kernalPath);
+    if (!kernal)
+        return { false, "Cannot load kernal ROM: " + kernalPath };
+
+    ROM* basic = mountROM(0xA000, 0xBFFF, "BASIC $A000-$BFFF", basicPath);
+    if (!basic)
+        return { false, "Cannot load BASIC ROM: " + basicPath };
+
+    ROM* charRom = mountROM(0xD000, 0xDFFF, "CHAR $D000-$DFFF", charPath);
+    if (!charRom)
+        return { false, "Cannot load char ROM: " + charPath };
+
+    // --- C64 I/O space dispatcher ---
+    auto ioSpace = std::make_unique<C64IOSpace>(&vic_, &sid_, &cia1_, &cia2_);
+    C64IOSpace* ioPtr = ioSpace.get();
+    dynamicDevices_.push_back(std::move(ioSpace));
+
+    // --- Three switchable regions ---
+    // $A000–$BFFF: option 0=RAM, 1=BASIC ROM
+    SwitchableRegion* regionA = mountSwitchableRegion(
+        0xA000, 0xBFFF, "BASIC/RAM $A000-$BFFF");
+    regionA->addOption(&ram_,  "RAM");
+    regionA->addOption(basic,  "BASIC ROM");
+
+    // $D000–$DFFF: option 0=RAM, 1=CHAR ROM, 2=I/O
+    SwitchableRegion* regionD = mountSwitchableRegion(
+        0xD000, 0xDFFF, "IO/CHAR/RAM $D000-$DFFF");
+    regionD->addOption(&ram_,   "RAM");
+    regionD->addOption(charRom, "CHAR ROM");
+    regionD->addOption(ioPtr,   "I/O (VIC+SID+CIA)");
+
+    // $E000–$FFFF: option 0=RAM, 1=KERNAL ROM
+    SwitchableRegion* regionE = mountSwitchableRegion(
+        0xE000, 0xFFFF, "KERNAL/RAM $E000-$FFFF");
+    regionE->addOption(&ram_,   "RAM");
+    regionE->addOption(kernal,  "KERNAL ROM");
+
+    // $0000–$FFFF catch-all RAM
+    bus_.addDevice(0x0000, 0xFFFF, &ram_, "RAM $0000-$FFFF");
+
+    // --- 6510 I/O port → bank controller ---
+    // C64 banking truth table (bits 2,1,0 = CHAREN, HIRAM, LORAM of effective data):
+    //   $A000: BASIC when HIRAM && LORAM, else RAM
+    //   $D000: I/O   when (HIRAM||LORAM) && CHAREN
+    //          CHAR  when (HIRAM||LORAM) && !CHAREN
+    //          RAM   when !HIRAM && !LORAM
+    //   $E000: KERNAL when HIRAM, else RAM
+    cpu6510_.onIOWrite = [regionA, regionD, regionE](uint8_t data, uint8_t dir) {
+        // Output pins use data; input pins float high (pull-ups)
+        const uint8_t eff    = (data & dir) | (~dir & 0xFF);
+        const bool    loram  = (eff & 0x01) != 0;
+        const bool    hiram  = (eff & 0x02) != 0;
+        const bool    charen = (eff & 0x04) != 0;
+
+        regionA->select((hiram && loram) ? 1 : 0);
+        regionE->select(hiram ? 1 : 0);
+        if (hiram || loram)
+            regionD->select(charen ? 2 : 1);
+        else
+            regionD->select(0);
+    };
+
+    // --- Switch to 6510 and apply initial bank state ---
+    activeCpu_ = &cpu6510_;
+    cpu6510_.connectBus(&bus_);
+    cpu6510_.reset();   // fires onIOWrite with power-on state ($37/$2F → BASIC+IO+KERNAL)
+
+    return { true, "[C64] Machine ready — press F8 to reset, F5 to run" };
+}
+
 void Machine::buildDefaultMap() {
     // Bus iterates entries in registration order — higher-priority devices
     // must be registered first so they shadow the catch-all RAM entry.

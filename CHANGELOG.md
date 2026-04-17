@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.24.0] - 2026-04-17
+
+### Added
+- **C64 preset** (`File → Presets → Commodore 64`) — dialog with three ROM file browse buttons (KERNAL, BASIC, CHAR); "Build C64 Machine" calls `Machine::buildC64Preset()` and prints result to Terminal
+- **`C64IOSpace` device** — dispatches the `$D000–$DFFF` I/O window to VIC (`$000–$3FF`), SID (`$400–$7FF`), colour-RAM stub (`$800–$BFF`), CIA1 (`$C00–$CFF`), CIA2 (`$D00–$DFF`)
+- **`Machine::buildC64Preset(kernalPath, basicPath, charPath)`** — mounts KERNAL/BASIC/CHAR ROMs, creates `C64IOSpace`, wires three `SwitchableRegion`s (`$A000`, `$D000`, `$E000`) with RAM/ROM/IO options, adds 64 KB catch-all RAM, connects the MOS 6510 `onIOWrite` callback with the full C64 LORAM/HIRAM/CHAREN banking truth table, switches CPU to 6510 and resets
+
+---
+
 ## [0.23.0] - 2026-04-17
 
 ### Added

@@ -5,6 +5,7 @@
 #include "emulator/devices/CIA6526.h"
 #include "emulator/devices/BankedMemory.h"
 #include "emulator/devices/BankController.h"
+#include "emulator/devices/C64IOSpace.h"
 #include "emulator/devices/BankSelectPort.h"
 #include "emulator/devices/ROM.h"
 #include "emulator/devices/SwitchableRegion.h"
@@ -86,6 +87,13 @@ public:
     MachineConfigResult loadConfig(const std::string& path);
 
     void resetAddressMap();   // restore default device wiring
+
+    // Build a Commodore 64 memory map.  Loads kernal, BASIC, and char ROMs
+    // from the given paths.  Switches the CPU to MOS 6510 and wires the I/O
+    // port to the three SwitchableRegions.  Returns an error if any ROM fails.
+    MachineConfigResult buildC64Preset(const std::string& kernalPath,
+                                       const std::string& basicPath,
+                                       const std::string& charPath);
 
     // Dynamic ROM management
     // mountROM loads a file, owns the ROM object, and maps it on the bus.

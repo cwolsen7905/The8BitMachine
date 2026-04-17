@@ -10,7 +10,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ---
 
-## Current State  (v0.23)
+## Current State  (v0.24)
 
 ### Machine Designer
 - **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and an optional `statusLine()` for the designer panel
@@ -51,9 +51,11 @@ WDC 65C02 additions:
 - **ROM loading** (File → Load ROM) — native macOS file dialog; supports raw `.bin` and Commodore `.prg`; resets CPU and jumps disassembler to load address
 - **Keyboard capture** — click the Screen panel to direct keyboard input into the CIA1 matrix; green border overlay and status label indicate active capture; Escape releases
 - **Machine config save / load** (File → Save / Load Machine Config) — persists the address-space wiring as a JSON file so machines can be recalled and shared
+- **C64 preset** (File → Presets → Commodore 64) — dialog to browse for KERNAL, BASIC, and CHAR ROM images; builds the complete C64 memory map with MOS 6510 CPU, three SwitchableRegions, and full banking truth table wired to the 6510 I/O port
 
 ### Emulator core
 - 64 KB flat RAM; reset vector points to the loaded program or the built-in NOP stub at `$0200`
+- **C64 memory map** — `Machine::buildC64Preset()` mounts KERNAL/BASIC/CHAR ROMs, creates a `C64IOSpace` dispatcher for `$D000–$DFFF`, three `SwitchableRegion`s (`$A000`, `$D000`, `$E000`), and a catch-all 64 KB RAM; the MOS 6510 I/O port `$01` drives all three regions via the C64 banking truth table (LORAM/HIRAM/CHAREN bits)
 - **CIA1 (MOS 6526) at `$F100–$F1FF`** — Timer A + Timer B (ϕ2 or TA-underflow count mode), full ADSR envelope, ICR mask/flags, TOD BCD clock with alarm and latch-on-read, data ports PRA/PRB; CIA1 IRQ wired to CPU IRQ line
 - **CIA2 at `$F200–$F2FF`** — same full implementation as CIA1
 - **SID6581 at `$D400–$D7FF`** — all 29 MOS 6581/8580 registers; SDL audio output at 44100 Hz; triangle/sawtooth/pulse/noise waveforms with correct 23-bit LFSR; full ADSR envelopes with datasheet-accurate timing; master volume; Machine Designer shows volume, filter cutoff, and voice 1 frequency
