@@ -21,7 +21,9 @@ Machine::Machine() {
 
 MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
                                               const std::string& basicPath,
-                                              const std::string& charPath) {
+                                              const std::string& charPath,
+                                              bool               keyMatrixTranspose) {
+    hasPreset_ = false;
     bus_.clearDevices();
     dynamicDevices_.clear();
 
@@ -96,6 +98,10 @@ MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
     activeCpu_ = &cpu6510_;
     cpu6510_.connectBus(&bus_);
     cpu6510_.reset();   // fires onIOWrite with power-on state ($37/$2F → BASIC+IO+KERNAL)
+
+    // Record preset so saveConfig can serialise it instead of the device list.
+    hasPreset_ = true;
+    preset_    = { "c64", kernalPath, basicPath, charPath, keyMatrixTranspose };
 
     return { true, "[C64] Machine ready — press F8 to reset, F5 to run" };
 }
@@ -283,6 +289,26 @@ MachineConfigResult Machine::saveConfig(const std::string& path) const {
     using json = nlohmann::json;
 
     json root;
+
+    // Preset machines serialise as a self-contained definition rather than a
+    // raw device list, so that the banking wiring can be fully reconstructed.
+    if (hasPreset_) {
+        root["version"] = 2;
+        root["preset"]  = preset_.name;
+        json pc;
+        pc["kernal"]              = preset_.kernalPath;
+        pc["basic"]               = preset_.basicPath;
+        pc["char"]                = preset_.charPath;
+        pc["key_matrix_transpose"] = preset_.keyMatrixTranspose;
+        root["preset_config"]     = pc;
+
+        std::ofstream f(path);
+        if (!f)
+            return { false, "[Config] Error: cannot write to " + path };
+        f << root.dump(2);
+        return { true, "[Config] Saved: " + path };
+    }
+
     root["version"] = 1;
     root["cpu"]     = activeCpu_->cpuName();
 
@@ -353,6 +379,25 @@ MachineConfigResult Machine::loadConfig(const std::string& path) {
         root = json::parse(f);
     } catch (const json::exception& e) {
         return { false, std::string("[Config] JSON parse error: ") + e.what() };
+    }
+
+    // Version 2: preset block — reconstruct via the appropriate builder.
+    if (root.contains("preset")) {
+        const std::string preset = root["preset"].get<std::string>();
+        if (preset == "c64") {
+            const auto& pc   = root["preset_config"];
+            const std::string kernal = pc.value("kernal", "");
+            const std::string basic  = pc.value("basic",  "");
+            const std::string chr    = pc.value("char",   "");
+            const bool        xpose  = pc.value("key_matrix_transpose", true);
+            auto result = buildC64Preset(kernal, basic, chr, xpose);
+            if (!result.ok) return result;
+            result.message = "[Config] Loaded: " + path + "  (preset: C64)";
+            result.hasPreset          = true;
+            result.keyMatrixTranspose = xpose;
+            return result;
+        }
+        return { false, "[Config] Error: unknown preset '" + preset + "'" };
     }
 
     if (!root.contains("devices") || !root["devices"].is_array())

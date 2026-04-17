@@ -23,8 +23,11 @@
 
 // Config save/load result
 struct MachineConfigResult {
-    bool        ok      = false;
+    bool        ok                 = false;
     std::string message;
+    // Populated on load when a preset was restored; Application should apply these.
+    bool        hasPreset          = false;
+    bool        keyMatrixTranspose = true;
 };
 
 // ---------------------------------------------------------------------------
@@ -91,9 +94,13 @@ public:
     // Build a Commodore 64 memory map.  Loads kernal, BASIC, and char ROMs
     // from the given paths.  Switches the CPU to MOS 6510 and wires the I/O
     // port to the three SwitchableRegions.  Returns an error if any ROM fails.
+    // keyMatrixTranspose: true = MEGA65 OpenROMs (PA=rows/PB=cols),
+    //                    false = standard C64 KERNAL (PA=cols/PB=rows).
+    // The value is stored in the preset and round-tripped through saveConfig/loadConfig.
     MachineConfigResult buildC64Preset(const std::string& kernalPath,
                                        const std::string& basicPath,
-                                       const std::string& charPath);
+                                       const std::string& charPath,
+                                       bool keyMatrixTranspose = true);
 
     // Dynamic ROM management
     // mountROM loads a file, owns the ROM object, and maps it on the bus.
@@ -158,4 +165,15 @@ private:
     void buildDefaultMap();
 
     std::vector<std::unique_ptr<IBusDevice>> dynamicDevices_;
+
+    // Active preset — populated by buildC64Preset, consumed by saveConfig.
+    struct PresetState {
+        std::string name;           // "c64"
+        std::string kernalPath;
+        std::string basicPath;
+        std::string charPath;
+        bool        keyMatrixTranspose = true;
+    };
+    bool        hasPreset_ = false;
+    PresetState preset_;
 };

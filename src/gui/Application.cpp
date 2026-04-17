@@ -1472,7 +1472,7 @@ void Application::drawC64PresetDialog() {
     if (!ready) ImGui::BeginDisabled();
     if (ImGui::Button("Build C64 Machine", { 160.0f, 0.0f })) {
         const auto result = machine_.buildC64Preset(
-            c64KernalPath_, c64BasicPath_, c64CharPath_);
+            c64KernalPath_, c64BasicPath_, c64CharPath_, keyMatrixTranspose_);
         c64Msg_ = result.message;
         if (result.ok) {
             cycleCount_      = 0;
@@ -1678,10 +1678,14 @@ void Application::loadMachineConfigDialog() {
     termPrint(result.message);
 
     if (result.ok) {
-        machine_.reset();
+        if (result.hasPreset) {
+            // Preset configs rebuild the machine internally — no extra reset needed.
+            keyMatrixTranspose_ = result.keyMatrixTranspose;
+        } else {
+            machine_.reset();
+        }
         cycleCount_      = 0;
         emulatorRunning_ = false;
-        termPrint("[Config] Machine reset with new address map.");
         termPrint(machine_.cpu().stateString());
     }
 }
