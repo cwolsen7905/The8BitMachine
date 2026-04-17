@@ -7,6 +7,25 @@
 #include <unordered_set>
 #include <vector>
 
+// One ROM slot required by a preset (e.g. KERNAL, BASIC, CHAR).
+struct PresetRomEntry {
+    std::string key;          // machine-readable id used as JSON key
+    std::string label;        // display name shown in the dialog
+    std::string description;  // tooltip / sub-label
+};
+
+// Metadata loaded from a bundled preset JSON file.
+struct PresetInfo {
+    std::string              name;
+    std::string              description;
+    std::string              presetType;   // "c64", "spectrum", …
+    std::string              path;         // absolute path to the .json file
+    std::string              cpu;
+    int                      cyclesPerFrame    = 0;
+    bool                     keyMatrixTranspose = true;
+    std::vector<PresetRomEntry> roms;
+};
+
 #ifdef __APPLE__
 #  include <OpenGL/gl3.h>
 #else
@@ -54,10 +73,17 @@ private:
     std::unordered_map<const IBusDevice*, bool> devicePanelVisible_;
 
     // -----------------------------------------------------------------------
+    // Bundled presets — scanned from presets/ at startup
+    // -----------------------------------------------------------------------
+    std::vector<PresetInfo>              presets_;
+    int                                  activePresetIdx_  = -1;  // preset being configured
+    bool                                 showPresetDialog_ = false;
+    std::unordered_map<std::string, std::string> presetRomPaths_;  // key → file path
+
+    // -----------------------------------------------------------------------
     // UI visibility toggles
     // -----------------------------------------------------------------------
     bool showScreen_        = true;
-    bool showC64Preset_     = false;
     bool keyboardCaptured_  = false;
     bool showTerminal_ = true;
     bool showCpuState_ = true;
@@ -110,11 +136,8 @@ private:
     char        designerBankCount_[4]{};
     std::string designerBankMsg_;
 
-    // C64 preset
-    std::string c64KernalPath_;
-    std::string c64BasicPath_;
-    std::string c64CharPath_;
-    std::string c64Msg_;
+    // Preset dialog status message
+    std::string presetMsg_;
 
     // Switchable Region
     char        designerSRStart_[5]{};
@@ -168,6 +191,8 @@ private:
     void loadRomDialog();
     void saveMachineConfigDialog();
     void loadMachineConfigDialog();
-    void drawC64PresetDialog();
+    void scanPresets();
+    void drawPresetDialog();
+    void buildActivePreset();
     void drawKeyboardDebug();
 };

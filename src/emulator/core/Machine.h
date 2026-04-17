@@ -156,11 +156,12 @@ public:
     const char* idForDevice(const IBusDevice* dev) const;
 
 private:
-    Memory  ram_;
-    CIA6526 cia1_;
-    CIA6526 cia2_;
-    VIC6566 vic_;
-    SID6581 sid_;
+    Memory     ram_;
+    CIA6526    cia1_;
+    CIA6526    cia2_;
+    VIC6566    vic_;
+    SID6581    sid_;
+    C64IOSpace c64IOSpace_;  // pre-wired to the four fixed chips above
 
     CPU6510  cpu6510_;
     CPU8502  cpu8502_;

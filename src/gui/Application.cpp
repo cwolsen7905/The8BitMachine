@@ -6,6 +6,10 @@
 #include "emulator/cpu/Disassembler.h"
 #include "gui/FileDialog.h"
 
+#include <nlohmann/json.hpp>
+
+#include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -157,6 +161,7 @@ bool Application::init() {
         SDL_PauseAudioDevice(audioDevice_, 0);  // start playing immediately
 
     emulatorReset();
+    scanPresets();
 
     running_ = true;
     return true;
@@ -357,7 +362,7 @@ void Application::render() {
     if (showDisasm_)   drawDisassembler();
     if (showMemView_)  drawMemoryViewer();
     if (showDesigner_) drawMachineDesigner();
-    if (showC64Preset_) drawC64PresetDialog();
+    if (showPresetDialog_) drawPresetDialog();
     if (showKeyDebug_) drawKeyboardDebug();
 
     // Per-device panels — uses panelDevices() so fixed chips are found even
@@ -385,9 +390,18 @@ void Application::drawMenuBar() {
 
         ImGui::Separator();
 
-        if (ImGui::BeginMenu("Presets")) {
-            if (ImGui::MenuItem("Commodore 64..."))
-                showC64Preset_ = true;
+        if (ImGui::BeginMenu("Load Preset", !presets_.empty())) {
+            for (int pi = 0; pi < (int)presets_.size(); ++pi) {
+                if (ImGui::MenuItem(presets_[pi].name.c_str())) {
+                    activePresetIdx_  = pi;
+                    showPresetDialog_ = true;
+                    presetMsg_.clear();
+                    // Pre-populate ROM path slots for this preset
+                    for (const auto& r : presets_[pi].roms)
+                        if (presetRomPaths_.find(r.key) == presetRomPaths_.end())
+                            presetRomPaths_[r.key] = "";
+                }
+            }
             ImGui::EndMenu();
         }
 
@@ -755,12 +769,13 @@ void Application::drawMachineDesigner() {
         const char* defEnd;
     };
     static constexpr KnownDev kKnown[] = {
-        { "vic",      "VIC-IIe (MOS 6566)",  "D000", "D3FF" },
-        { "sid",      "SID (MOS 6581)",       "D400", "D7FF" },
-        { "cia1",     "CIA1 (MOS 6526)",      "F100", "F1FF" },
-        { "cia2",     "CIA2 (MOS 6526)",      "F200", "F2FF" },
-        { "ram",      "RAM (64 KB flat)",     "0000", "FFFF" },
-        { "char_out", "CHAR_OUT debug port",  "F000", "F000" },
+        { "vic",          "VIC-IIe (MOS 6566)",        "D000", "D3FF" },
+        { "sid",          "SID (MOS 6581)",             "D400", "D7FF" },
+        { "cia1",         "CIA1 (MOS 6526)",            "F100", "F1FF" },
+        { "cia2",         "CIA2 (MOS 6526)",            "F200", "F2FF" },
+        { "c64_io_space", "C64 I/O Space (VIC+SID+CIA)","D000", "DFFF" },
+        { "ram",          "RAM (64 KB flat)",           "0000", "FFFF" },
+        { "char_out",     "CHAR_OUT debug port",        "F000", "F000" },
     };
     static constexpr int kKnownCount = (int)(sizeof(kKnown) / sizeof(kKnown[0]));
 
@@ -1017,6 +1032,51 @@ void Application::drawMachineDesigner() {
     if (!hasCatchAll)
         ImGui::TextColored({ 1.0f, 0.85f, 0.2f, 1.0f },
             "No catch-all entry ($0000-$FFFF) -- unmapped reads return $FF");
+
+    // ---- Indirect / Contained Devices ----
+    // Show chips that live inside a container (e.g. C64IOSpace inside a
+    // SwitchableRegion) as read-only informational rows.
+    {
+        // Build set of pointers that appear directly on the bus
+        std::unordered_set<const IBusDevice*> directBus;
+        for (const auto& e : machine_.bus().devices())
+            if (e.device) directBus.insert(e.device);
+
+        // Collect indirect panel devices (found via panelDevices() fallback)
+        std::vector<Machine::PanelEntry> indirect;
+        for (const auto& pe : machine_.panelDevices())
+            if (!directBus.count(pe.device))
+                indirect.push_back(pe);
+
+        if (!indirect.empty()) {
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "Contained Devices");
+            ImGui::SameLine();
+            ImGui::TextDisabled("(via container — read only)");
+            ImGui::Spacing();
+
+            if (ImGui::BeginTable("##indirect", 3,
+                    ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg |
+                    ImGuiTableFlags_SizingFixedFit)) {
+                ImGui::TableSetupColumn("Address", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+                ImGui::TableSetupColumn("Device",  ImGuiTableColumnFlags_WidthFixed, 160.0f);
+                ImGui::TableSetupColumn("Status",  ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableHeadersRow();
+
+                for (const auto& pe : indirect) {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::TextDisabled("%s", pe.label.c_str());
+                    ImGui::TableSetColumnIndex(1);
+                    ImGui::TextUnformatted(pe.device->deviceName());
+                    ImGui::TableSetColumnIndex(2);
+                    ImGui::TextDisabled("%s", pe.device->statusLine().c_str());
+                }
+                ImGui::EndTable();
+            }
+        }
+    }
 
     // ---- Add Device ----
     ImGui::Spacing();
@@ -1444,98 +1504,177 @@ void Application::drawKeyboardDebug() {
 }
 
 // ---------------------------------------------------------------------------
-// C64 preset dialog
+// scanPresets — find all *.json files in presets/ next to the executable
 // ---------------------------------------------------------------------------
 
-void Application::drawC64PresetDialog() {
-    ImGui::SetNextWindowSize({ 480.0f, 260.0f }, ImGuiCond_FirstUseEver);
+void Application::scanPresets() {
+    presets_.clear();
+
+    char* basePath = SDL_GetBasePath();
+    if (!basePath) return;
+    const std::string presetsDir = std::string(basePath) + "presets";
+    SDL_free(basePath);
+
+    // Iterate directory entries using C++17 filesystem
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    for (const auto& entry : fs::directory_iterator(presetsDir, ec)) {
+        if (ec || entry.path().extension() != ".json") continue;
+
+        std::ifstream f(entry.path());
+        if (!f) continue;
+
+        nlohmann::json root;
+        try { root = nlohmann::json::parse(f); }
+        catch (...) { continue; }
+
+        PresetInfo info;
+        info.path              = entry.path().string();
+        info.name              = root.value("name", entry.path().stem().string());
+        info.description       = root.value("description", "");
+        info.presetType        = root.value("preset_type", "");
+        info.cpu               = root.value("cpu", "");
+        info.cyclesPerFrame    = root.value("cycles_per_frame", 0);
+        info.keyMatrixTranspose = root.value("key_matrix_transpose", true);
+
+        if (root.contains("roms") && root["roms"].is_array()) {
+            for (const auto& r : root["roms"]) {
+                PresetRomEntry re;
+                re.key         = r.value("key", "");
+                re.label       = r.value("label", re.key);
+                re.description = r.value("description", "");
+                info.roms.push_back(std::move(re));
+            }
+        }
+
+        presets_.push_back(std::move(info));
+    }
+
+    // Sort alphabetically by name
+    std::sort(presets_.begin(), presets_.end(),
+        [](const PresetInfo& a, const PresetInfo& b){ return a.name < b.name; });
+}
+
+// ---------------------------------------------------------------------------
+// drawPresetDialog — generic ROM picker driven by the active PresetInfo
+// ---------------------------------------------------------------------------
+
+void Application::drawPresetDialog() {
+    if (activePresetIdx_ < 0 || activePresetIdx_ >= (int)presets_.size()) return;
+    const PresetInfo& preset = presets_[activePresetIdx_];
+
+    const std::string title = preset.name + " Preset";
+    ImGui::SetNextWindowSize({ 500.0f, 0.0f }, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
                             ImGuiCond_FirstUseEver, { 0.5f, 0.5f });
 
-    if (!ImGui::Begin("Commodore 64 Preset", &showC64Preset_,
-                      ImGuiWindowFlags_NoCollapse)) {
+    if (!ImGui::Begin(title.c_str(), &showPresetDialog_,
+                      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::End();
         return;
     }
 
-    ImGui::TextWrapped(
-        "Load Commodore 64 ROM images to build a full C64 memory map.\n"
-        "All three ROMs are required.");
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
+    if (!preset.description.empty()) {
+        ImGui::TextWrapped("%s", preset.description.c_str());
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+    }
 
-    auto romRow = [&](const char* label, std::string& path) {
-        ImGui::TextUnformatted(label);
-        ImGui::SameLine(80.0f);
-        ImGui::SetNextItemWidth(260.0f);
+    // ROM browse rows — one per entry in preset.roms
+    bool allReady = true;
+    for (const auto& rom : preset.roms) {
+        std::string& path = presetRomPaths_[rom.key];
+        if (path.empty()) allReady = false;
+
+        ImGui::TextUnformatted(rom.label.c_str());
+        if (!rom.description.empty() && ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", rom.description.c_str());
+        ImGui::SameLine(90.0f);
+        ImGui::SetNextItemWidth(270.0f);
         char buf[512];
         std::strncpy(buf, path.c_str(), sizeof(buf) - 1);
         buf[sizeof(buf) - 1] = '\0';
-        ImGui::PushID(label);
+        ImGui::PushID(rom.key.c_str());
         if (ImGui::InputText("##p", buf, sizeof(buf)))
             path = buf;
         ImGui::SameLine();
         if (ImGui::Button("Browse...")) {
-            const std::string title = std::string("Select ") + label;
             const std::string sel = FileDialog::openFile(
-                title.c_str(), {"bin", "rom", "prg", ""});
+                ("Select " + rom.label).c_str(), {"bin", "rom", "prg", ""});
             if (!sel.empty()) path = sel;
         }
         ImGui::PopID();
-    };
+    }
 
-    romRow("KERNAL",  c64KernalPath_);
-    romRow("BASIC",   c64BasicPath_);
-    romRow("CHAR",    c64CharPath_);
-
-    ImGui::Spacing();
-    ImGui::TextUnformatted("ROM target:");
-    ImGui::SameLine();
-    bool standard = !keyMatrixTranspose_;
-    if (ImGui::RadioButton("Standard C64 KERNAL", standard))  keyMatrixTranspose_ = false;
-    ImGui::SameLine();
-    if (ImGui::RadioButton("MEGA65 OpenROMs", !standard))      keyMatrixTranspose_ = true;
-    ImGui::SameLine();
-    ImGui::TextDisabled("(?)");
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Controls keyboard matrix wiring.\n"
-                          "MEGA65 OpenROMs use PA=rows/PB=cols (transposed vs stock C64).");
+    // Keyboard matrix option (shown for presets that declare it)
+    if (preset.keyMatrixTranspose || !preset.roms.empty()) {
+        ImGui::Spacing();
+        ImGui::TextUnformatted("ROM target:");
+        ImGui::SameLine();
+        bool standard = !keyMatrixTranspose_;
+        if (ImGui::RadioButton("Standard KERNAL", standard))  keyMatrixTranspose_ = false;
+        ImGui::SameLine();
+        if (ImGui::RadioButton("MEGA65 OpenROMs", !standard)) keyMatrixTranspose_ = true;
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("MEGA65 OpenROMs use PA=rows/PB=cols (transposed vs stock KERNAL).");
+    }
 
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
 
-    const bool ready = !c64KernalPath_.empty() &&
-                       !c64BasicPath_.empty()  &&
-                       !c64CharPath_.empty();
+    if (!allReady) ImGui::BeginDisabled();
+    const std::string btnLabel = "Build " + preset.name;
+    if (ImGui::Button(btnLabel.c_str(), { 180.0f, 0.0f }))
+        buildActivePreset();
+    if (!allReady) ImGui::EndDisabled();
 
-    if (!ready) ImGui::BeginDisabled();
-    if (ImGui::Button("Build C64 Machine", { 160.0f, 0.0f })) {
-        const auto result = machine_.buildC64Preset(
-            c64KernalPath_, c64BasicPath_, c64CharPath_, keyMatrixTranspose_);
-        c64Msg_ = result.message;
-        if (result.ok) {
-            cyclesPerFrame_  = 16'667;  // ~1 MHz at 60 fps
-            cycleCount_      = 0;
-            emulatorRunning_ = false;
-            termPrint(result.message);
-            termPrint(machine_.cpu().stateString());
-            showC64Preset_ = false;
-        }
-    }
-    if (!ready) ImGui::EndDisabled();
-
-    if (!c64Msg_.empty()) {
+    if (!presetMsg_.empty()) {
         ImGui::SameLine();
-        const bool isErr = c64Msg_.rfind("[C64] Machine ready", 0) != 0;
+        const bool isErr = presetMsg_.find("[Config]") == std::string::npos ||
+                           presetMsg_.find("Error") != std::string::npos;
         if (isErr)
-            ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", c64Msg_.c_str());
+            ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", presetMsg_.c_str());
         else
-            ImGui::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s", c64Msg_.c_str());
+            ImGui::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s", presetMsg_.c_str());
     }
 
     ImGui::End();
+}
+
+// ---------------------------------------------------------------------------
+// buildActivePreset — dispatches to the right C++ builder
+// ---------------------------------------------------------------------------
+
+void Application::buildActivePreset() {
+    if (activePresetIdx_ < 0 || activePresetIdx_ >= (int)presets_.size()) return;
+    const PresetInfo& preset = presets_[activePresetIdx_];
+
+    MachineConfigResult result;
+
+    if (preset.presetType == "c64") {
+        result = machine_.buildC64Preset(
+            presetRomPaths_["kernal"],
+            presetRomPaths_["basic"],
+            presetRomPaths_["char"],
+            keyMatrixTranspose_);
+    } else {
+        presetMsg_ = "[Preset] Unknown preset type: " + preset.presetType;
+        return;
+    }
+
+    presetMsg_ = result.message;
+    if (result.ok) {
+        cyclesPerFrame_  = preset.cyclesPerFrame > 0 ? preset.cyclesPerFrame : 16'667;
+        cycleCount_      = 0;
+        emulatorRunning_ = false;
+        termPrint(result.message);
+        termPrint(machine_.cpu().stateString());
+        showPresetDialog_ = false;
+    }
 }
 
 // ---------------------------------------------------------------------------

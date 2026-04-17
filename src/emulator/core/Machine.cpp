@@ -4,7 +4,7 @@
 #include <sstream>
 #include <iomanip>
 
-Machine::Machine() {
+Machine::Machine() : c64IOSpace_(&vic_, &sid_, &cia1_, &cia2_) {
     // Fixed chips are always clocked directly in Machine::clock(); the bus
     // must not also clock them or they'd run at double speed in default mode.
     bus_.setNoAutoClk(&vic_);
@@ -44,11 +44,6 @@ MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
     if (!charRom)
         return { false, "Cannot load char ROM: " + charPath };
 
-    // --- C64 I/O space dispatcher ---
-    auto ioSpace = std::make_unique<C64IOSpace>(&vic_, &sid_, &cia1_, &cia2_);
-    C64IOSpace* ioPtr = ioSpace.get();
-    dynamicDevices_.push_back(std::move(ioSpace));
-
     // --- Three switchable regions — registered on bus BEFORE catch-all RAM ---
     // $A000–$BFFF: option 0=RAM, 1=BASIC ROM
     SwitchableRegion* regionA = mountSwitchableRegion(
@@ -56,12 +51,12 @@ MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
     regionA->addOption(&ram_,  "RAM");
     regionA->addOption(basic,  "BASIC ROM");
 
-    // $D000–$DFFF: option 0=RAM, 1=CHAR ROM, 2=I/O
+    // $D000–$DFFF: option 0=RAM, 1=CHAR ROM, 2=I/O (uses fixed c64IOSpace_)
     SwitchableRegion* regionD = mountSwitchableRegion(
         0xD000, 0xDFFF, "IO/CHAR/RAM $D000-$DFFF");
-    regionD->addOption(&ram_,   "RAM");
-    regionD->addOption(charRom, "CHAR ROM");
-    regionD->addOption(ioPtr,   "I/O (VIC+SID+CIA)");
+    regionD->addOption(&ram_,        "RAM");
+    regionD->addOption(charRom,      "CHAR ROM");
+    regionD->addOption(&c64IOSpace_, "I/O (VIC+SID+CIA)");
 
     // $E000–$FFFF: option 0=RAM, 1=KERNAL ROM
     SwitchableRegion* regionE = mountSwitchableRegion(
@@ -311,12 +306,13 @@ std::vector<Machine::PanelEntry> Machine::panelDevices() {
 }
 
 const char* Machine::idForDevice(const IBusDevice* dev) const {
-    if (dev == &vic_)   return "vic";
-    if (dev == &sid_)   return "sid";
-    if (dev == &cia1_)  return "cia1";
-    if (dev == &cia2_)  return "cia2";
-    if (dev == &ram_)   return "ram";
-    if (dev == nullptr) return "char_out";
+    if (dev == &vic_)        return "vic";
+    if (dev == &sid_)        return "sid";
+    if (dev == &cia1_)       return "cia1";
+    if (dev == &cia2_)       return "cia2";
+    if (dev == &ram_)        return "ram";
+    if (dev == &c64IOSpace_) return "c64_io_space";
+    if (dev == nullptr)      return "char_out";
     for (const auto& d : dynamicDevices_) {
         if (d.get() != dev) continue;
         if (dynamic_cast<const ROM*>(dev))              return "rom";
@@ -329,12 +325,13 @@ const char* Machine::idForDevice(const IBusDevice* dev) const {
 }
 
 IBusDevice* Machine::deviceForId(const std::string& id) {
-    if (id == "vic")      return &vic_;
-    if (id == "sid")      return &sid_;
-    if (id == "cia1")     return &cia1_;
-    if (id == "cia2")     return &cia2_;
-    if (id == "ram")      return &ram_;
-    if (id == "char_out") return nullptr;
+    if (id == "vic")          return &vic_;
+    if (id == "sid")          return &sid_;
+    if (id == "cia1")         return &cia1_;
+    if (id == "cia2")         return &cia2_;
+    if (id == "ram")          return &ram_;
+    if (id == "c64_io_space") return &c64IOSpace_;
+    if (id == "char_out")     return nullptr;
     return nullptr;
 }
 

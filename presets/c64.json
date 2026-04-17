@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "preset_type": "c64",
+  "name": "Commodore 64",
+  "description": "MOS 6510 @ ~1 MHz · VIC-IIe · SID 6581 · 64 KB RAM + bank-switched ROMs",
+  "cpu": "MOS 6510",
+  "cycles_per_frame": 16667,
+  "key_matrix_transpose": true,
+  "roms": [
+    { "key": "kernal", "label": "KERNAL", "description": "8 KB KERNAL ROM" },
+    { "key": "basic",  "label": "BASIC",  "description": "8 KB BASIC ROM"  },
+    { "key": "char",   "label": "CHAR",   "description": "4 KB Character ROM" }
+  ]
+}

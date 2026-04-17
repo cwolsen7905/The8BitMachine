@@ -121,6 +121,16 @@ endif()
 find_program(CA65_EXE ca65)
 find_program(LD65_EXE ld65)
 
+# ---------------------------------------------------------------------------
+# Copy presets/ directory next to the executable after each build
+# ---------------------------------------------------------------------------
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/presets"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/presets"
+    COMMENT "Copying presets/ to build directory"
+)
+
 if(CA65_EXE AND LD65_EXE)
     file(GLOB ROM_SOURCES "${CMAKE_SOURCE_DIR}/roms/*.s")
     set(ROM_PRGS)
