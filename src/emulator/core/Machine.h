@@ -76,6 +76,13 @@ public:
     MachineConfigResult saveConfig(const std::string& path) const;
     MachineConfigResult loadConfig(const std::string& path);
 
+    void resetAddressMap();   // restore default device wiring
+
+    // Look up a device pointer by its config ID ("vic", "sid", "cia1", etc.)
+    // Returns nullptr for "char_out" and unknown IDs.
+    IBusDevice* deviceForId(const std::string& id);
+    const char* idForDevice(const IBusDevice* dev) const;
+
 private:
     Memory  ram_;
     CIA6526 cia1_;
@@ -90,7 +97,4 @@ private:
     Bus bus_;
 
     void buildDefaultMap();
-
-    const char*  idForDevice(const IBusDevice* dev) const;
-    IBusDevice*  deviceForId(const std::string& id);
 };

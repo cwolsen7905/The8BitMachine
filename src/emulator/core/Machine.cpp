@@ -25,6 +25,11 @@ void Machine::buildDefaultMap() {
     bus_.addDevice(0x0000, 0xFFFF, &ram_,  "RAM  $0000–$FFFF");
 }
 
+void Machine::resetAddressMap() {
+    bus_.clearDevices();
+    buildDefaultMap();
+}
+
 void Machine::reset() {
     bus_.reset();   // resets RAM + CIA1 + CIA2 (skips nullptr sentinel)
     activeCpu_->reset();

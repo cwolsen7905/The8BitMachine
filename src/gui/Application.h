@@ -71,6 +71,20 @@ private:
     bool         memViewFollowPC_ = false;
 
     // -----------------------------------------------------------------------
+    // Machine Designer
+    // -----------------------------------------------------------------------
+    int         designerAddDevIdx_  = 0;
+    char        designerAddStart_[5]{};
+    char        designerAddEnd_[5]{};
+    std::string designerAddError_;
+
+    // Inline address editing
+    int         designerEditRow_    = -1;
+    int         designerEditCol_    = -1;  // 0=start, 1=end
+    char        designerEditBuf_[5]{};
+    bool        designerEditFocus_  = false;
+
+    // -----------------------------------------------------------------------
     // Terminal
     // -----------------------------------------------------------------------
     std::vector<std::string> termLines_;

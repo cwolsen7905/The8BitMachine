@@ -705,10 +705,32 @@ void Application::drawDisassembler() {
 // ---------------------------------------------------------------------------
 
 void Application::drawMachineDesigner() {
-    ImGui::SetNextWindowSize({ 500.0f, 380.0f }, ImGuiCond_FirstUseEver);
+    struct KnownDev {
+        const char* id;
+        const char* name;
+        const char* defStart;
+        const char* defEnd;
+    };
+    static constexpr KnownDev kKnown[] = {
+        { "vic",      "VIC-IIe (MOS 6566)",  "D000", "D3FF" },
+        { "sid",      "SID (MOS 6581)",       "D400", "D7FF" },
+        { "cia1",     "CIA1 (MOS 6526)",      "F100", "F1FF" },
+        { "cia2",     "CIA2 (MOS 6526)",      "F200", "F2FF" },
+        { "ram",      "RAM (64 KB flat)",     "0000", "FFFF" },
+        { "char_out", "CHAR_OUT debug port",  "F000", "F000" },
+    };
+    static constexpr int kKnownCount = (int)(sizeof(kKnown) / sizeof(kKnown[0]));
+
+    // Seed address fields on first open
+    if (designerAddStart_[0] == '\0') {
+        std::strncpy(designerAddStart_, kKnown[0].defStart, 5);
+        std::strncpy(designerAddEnd_,   kKnown[0].defEnd,   5);
+    }
+
+    ImGui::SetNextWindowSize({ 560.0f, 440.0f }, ImGuiCond_FirstUseEver);
     ImGui::Begin("Machine Designer", &showDesigner_);
 
-    // CPU selector
+    // ---- CPU selector ----
     ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "CPU");
     ImGui::SameLine(80.0f);
     const char* cpuNames[] = { "MOS 8502", "WDC 65C02" };
@@ -725,40 +747,227 @@ void Application::drawMachineDesigner() {
     }
     ImGui::Separator();
 
-    // Address-space device table
+    // ---- Address-space device table ----
     ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "Address Space");
+    if (ImGui::SmallButton("Sort by Address"))
+        machine_.bus().sortByAddress();
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Reset to Defaults"))
+        machine_.resetAddressMap();
 
     constexpr ImGuiTableFlags tf =
         ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
         ImGuiTableFlags_SizingFixedFit;
 
-    if (ImGui::BeginTable("##devices", 4, tf)) {
-        ImGui::TableSetupColumn("Start",  ImGuiTableColumnFlags_WidthFixed,  60.0f);
-        ImGui::TableSetupColumn("End",    ImGuiTableColumnFlags_WidthFixed,  60.0f);
-        ImGui::TableSetupColumn("Device", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+    int removeIdx = -1;
+    int moveFrom  = -1;
+    int moveTo    = -1;
+
+    // ---- Pre-compute per-row validation warnings ----
+    struct RowWarn { uint32_t color = 0; const char* msg = nullptr; };
+    const auto& allDevs = machine_.bus().devices();
+    std::vector<RowWarn> rowWarns(allDevs.size());
+    bool hasCatchAll = false;
+
+    for (int i = 0; i < (int)allDevs.size(); ++i) {
+        const auto& e = allDevs[i];
+        if (e.start == 0x0000 && e.end == 0xFFFF)
+            hasCatchAll = true;
+        if (e.start > e.end) {
+            rowWarns[i] = { ImGui::GetColorU32(ImVec4(0.85f, 0.2f, 0.2f, 0.35f)),
+                            "Invalid range: Start > End" };
+            continue;
+        }
+        for (int j = 0; j < i; ++j) {
+            const auto& p = allDevs[j];
+            if (p.start <= p.end && p.start <= e.start && p.end >= e.end) {
+                rowWarns[i] = { ImGui::GetColorU32(ImVec4(0.85f, 0.55f, 0.1f, 0.35f)),
+                                "Unreachable: fully shadowed by a higher-priority entry" };
+                break;
+            }
+        }
+    }
+
+    if (ImGui::BeginTable("##devices", 6, tf)) {
+        ImGui::TableSetupColumn("",       ImGuiTableColumnFlags_WidthFixed,  16.0f);  // drag handle
+        ImGui::TableSetupColumn("Start",  ImGuiTableColumnFlags_WidthFixed,  56.0f);
+        ImGui::TableSetupColumn("End",    ImGuiTableColumnFlags_WidthFixed,  56.0f);
+        ImGui::TableSetupColumn("Device", ImGuiTableColumnFlags_WidthFixed, 160.0f);
         ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("",       ImGuiTableColumnFlags_WidthFixed,  24.0f);
         ImGui::TableHeadersRow();
 
-        for (const auto& e : machine_.bus().devices()) {
+        // Cancel inline edit on Escape
+        if (designerEditRow_ >= 0 && ImGui::IsKeyPressed(ImGuiKey_Escape))
+            designerEditRow_ = designerEditCol_ = -1;
+
+        for (int i = 0; i < (int)allDevs.size(); ++i) {
+            const auto& e = allDevs[i];
+            ImGui::PushID(i);
             ImGui::TableNextRow();
+
+            // Apply warning row tint
+            if (rowWarns[i].color)
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, rowWarns[i].color);
+
+            // ---- col 0: drag handle (also carries the warning tooltip) ----
             ImGui::TableSetColumnIndex(0);
-            ImGui::TextDisabled("$%04X", (unsigned)e.start);
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextDisabled("$%04X", (unsigned)e.end);
-            ImGui::TableSetColumnIndex(2);
-            ImGui::TextUnformatted(e.label.c_str());
+            ImGui::PushStyleColor(ImGuiCol_Header,        ImVec4(0,0,0,0));
+            ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.4f,0.4f,0.4f,0.3f));
+            ImGui::Selectable("=", false, 0, ImVec2(12.0f, 0.0f));
+            ImGui::PopStyleColor(2);
+            if (rowWarns[i].msg && ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", rowWarns[i].msg);
+
+            if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceNoHoldToOpenOthers)) {
+                ImGui::SetDragDropPayload("BUS_ROW", &i, sizeof(int));
+                ImGui::TextUnformatted(e.label.c_str());
+                ImGui::EndDragDropSource();
+            }
+            if (ImGui::BeginDragDropTarget()) {
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
+                    ImGui::GetColorU32(ImGuiCol_DragDropTarget, 0.25f));
+                if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("BUS_ROW")) {
+                    moveFrom = *(const int*)pl->Data;
+                    moveTo   = i;
+                }
+                ImGui::EndDragDropTarget();
+            }
+
+            // ---- cols 1 & 2: editable address cells ----
+            // semanticCol: 0=start, 1=end (stored in designerEditCol_)
+            auto addrCell = [&](int tableCol, int semanticCol, uint16_t val) {
+                ImGui::TableSetColumnIndex(tableCol);
+                if (designerEditRow_ == i && designerEditCol_ == semanticCol) {
+                    if (designerEditFocus_) {
+                        ImGui::SetKeyboardFocusHere();
+                        designerEditFocus_ = false;
+                    }
+                    ImGui::SetNextItemWidth(52.0f);
+                    constexpr ImGuiInputTextFlags kEditFlags =
+                        ImGuiInputTextFlags_CharsHexadecimal |
+                        ImGuiInputTextFlags_CharsUppercase   |
+                        ImGuiInputTextFlags_EnterReturnsTrue;
+                    bool entered = ImGui::InputText("##ec", designerEditBuf_, 5, kEditFlags);
+                    bool lost    = !entered && ImGui::IsItemDeactivated();
+                    if (entered || lost) {
+                        char* ep;
+                        unsigned long v = std::strtoul(designerEditBuf_, &ep, 16);
+                        if (ep != designerEditBuf_ && v <= 0xFFFF) {
+                            uint16_t ns = (semanticCol == 0) ? (uint16_t)v : e.start;
+                            uint16_t ne = (semanticCol == 1) ? (uint16_t)v : e.end;
+                            if (ns <= ne)
+                                machine_.bus().modifyAt((size_t)i, ns, ne);
+                        }
+                        designerEditRow_ = designerEditCol_ = -1;
+                    }
+                } else {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "$%04X", (unsigned)val);
+                    ImGui::PushStyleColor(ImGuiCol_HeaderHovered,
+                        ImVec4(0.26f, 0.59f, 0.98f, 0.25f));
+                    if (ImGui::Selectable(buf, false,
+                            ImGuiSelectableFlags_None, ImVec2(52.0f, 0.0f))) {
+                        designerEditRow_   = i;
+                        designerEditCol_   = semanticCol;
+                        designerEditFocus_ = true;
+                        std::snprintf(designerEditBuf_, 5, "%04X", (unsigned)val);
+                    }
+                    ImGui::PopStyleColor();
+                }
+            };
+
+            addrCell(1, 0, e.start);
+            addrCell(2, 1, e.end);
+
+            // ---- col 3: device label ----
             ImGui::TableSetColumnIndex(3);
+            ImGui::TextUnformatted(e.label.c_str());
+
+            // ---- col 4: status ----
+            ImGui::TableSetColumnIndex(4);
             if (e.device)
                 ImGui::TextDisabled("%s", e.device->statusLine().c_str());
             else
                 ImGui::TextDisabled("—");
-        }
 
+            // ---- col 5: remove ----
+            ImGui::TableSetColumnIndex(5);
+            if (ImGui::SmallButton("×"))
+                removeIdx = i;
+
+            ImGui::PopID();
+        }
         ImGui::EndTable();
     }
 
+    if (removeIdx >= 0)
+        machine_.bus().removeAt(static_cast<size_t>(removeIdx));
+    if (moveFrom >= 0 && moveTo >= 0)
+        machine_.bus().moveEntry(static_cast<size_t>(moveFrom),
+                                  static_cast<size_t>(moveTo));
+
+    if (!hasCatchAll)
+        ImGui::TextColored({ 1.0f, 0.85f, 0.2f, 1.0f },
+            "No catch-all entry ($0000-$FFFF) -- unmapped reads return $FF");
+
+    // ---- Add Device ----
     ImGui::Spacing();
-    ImGui::TextDisabled("Future: add / remove devices and rewire the address space at runtime.");
+    ImGui::Separator();
+    ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "Add Device");
+    ImGui::Spacing();
+
+    int prevIdx = designerAddDevIdx_;
+    ImGui::SetNextItemWidth(180.0f);
+    if (ImGui::BeginCombo("##adddev", kKnown[designerAddDevIdx_].name)) {
+        for (int i = 0; i < kKnownCount; ++i) {
+            if (ImGui::Selectable(kKnown[i].name, designerAddDevIdx_ == i))
+                designerAddDevIdx_ = i;
+            if (designerAddDevIdx_ == i) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    if (designerAddDevIdx_ != prevIdx) {
+        std::strncpy(designerAddStart_, kKnown[designerAddDevIdx_].defStart, 5);
+        std::strncpy(designerAddEnd_,   kKnown[designerAddDevIdx_].defEnd,   5);
+        designerAddError_.clear();
+    }
+
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(54.0f);
+    ImGui::InputText("##as", designerAddStart_, 5,
+        ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
+    ImGui::SameLine();
+    ImGui::TextDisabled("–");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(54.0f);
+    ImGui::InputText("##ae", designerAddEnd_, 5,
+        ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
+    ImGui::SameLine();
+
+    if (ImGui::Button("Add")) {
+        char* ep = nullptr;
+        unsigned long s = std::strtoul(designerAddStart_, &ep, 16);
+        unsigned long e2 = std::strtoul(designerAddEnd_,  &ep, 16);
+        if (s <= e2 && e2 <= 0xFFFF) {
+            const KnownDev& kd = kKnown[designerAddDevIdx_];
+            IBusDevice* dev = machine_.deviceForId(kd.id);
+            char label[64];
+            std::snprintf(label, sizeof(label), "%s $%04lX–$%04lX", kd.name, s, e2);
+            machine_.bus().addDevice(
+                static_cast<uint16_t>(s),
+                static_cast<uint16_t>(e2),
+                dev, label);
+            designerAddError_.clear();
+        } else {
+            designerAddError_ = "Invalid range";
+        }
+    }
+
+    if (!designerAddError_.empty()) {
+        ImGui::SameLine();
+        ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", designerAddError_.c_str());
+    }
 
     ImGui::End();
 }

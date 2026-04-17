@@ -44,6 +44,10 @@ public:
     void addDevice(uint16_t start, uint16_t end,
                    IBusDevice* device, const std::string& label = "");
     void removeDevice(IBusDevice* device);
+    void removeAt(size_t index);
+    void modifyAt(size_t index, uint16_t newStart, uint16_t newEnd);
+    void moveEntry(size_t from, size_t to);
+    void sortByAddress();
     void clearDevices();
 
     const std::vector<DeviceEntry>& devices() const { return devices_; }
