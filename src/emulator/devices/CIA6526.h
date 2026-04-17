@@ -46,6 +46,13 @@ public:
     std::function<void()> onIRQ;
 
     // -----------------------------------------------------------------------
+    // Keyboard matrix — 8 columns × 8 rows, active-low.
+    // col = PA bit index (0–7), row = PB bit index (0–7).
+    // PRB reads the AND of all selected columns' row bytes.
+    // -----------------------------------------------------------------------
+    void setKey(int col, int row, bool pressed);
+
+    // -----------------------------------------------------------------------
     // Register offsets
     // -----------------------------------------------------------------------
     static constexpr uint8_t REG_PRA      = 0x00;
@@ -103,6 +110,9 @@ private:
     // Interrupt state
     uint8_t icrMask_  = 0x00;  // which sources are enabled (write side)
     uint8_t icrFlags_ = 0x00;  // which sources have fired  (read side)
+
+    // Keyboard matrix — column bytes, active-low (0xFF = no keys pressed)
+    uint8_t keyMatrix_[8] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
 
     void timerAUnderflow();
 };

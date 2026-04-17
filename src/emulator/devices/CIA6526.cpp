@@ -4,9 +4,16 @@
 // Reset
 // ---------------------------------------------------------------------------
 
+void CIA6526::setKey(int col, int row, bool pressed) {
+    if (col < 0 || col > 7 || row < 0 || row > 7) return;
+    if (pressed) keyMatrix_[col] &= ~static_cast<uint8_t>(1 << row);
+    else         keyMatrix_[col] |=  static_cast<uint8_t>(1 << row);
+}
+
 void CIA6526::reset() {
     pra_  = 0xFF;  prb_  = 0xFF;
     ddra_ = 0x00;  ddrb_ = 0x00;
+    for (auto& col : keyMatrix_) col = 0xFF;
 
     timerALatch_   = 0xFFFF;
     timerACounter_ = 0xFFFF;
@@ -60,8 +67,14 @@ void CIA6526::timerAUnderflow() {
 
 uint8_t CIA6526::read(uint16_t offset) const {
     switch (offset & 0x0F) {
-        case REG_PRA:     return pra_;
-        case REG_PRB:     return prb_;
+        case REG_PRA: return pra_;
+        case REG_PRB: {
+            uint8_t result = 0xFF;
+            for (int col = 0; col < 8; ++col)
+                if (!(pra_ & (1 << col)))
+                    result &= keyMatrix_[col];
+            return result;
+        }
         case REG_DDRA:    return ddra_;
         case REG_DDRB:    return ddrb_;
         case REG_TALO:    return static_cast<uint8_t>(timerACounter_ & 0xFF);

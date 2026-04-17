@@ -1,6 +1,7 @@
 #pragma once
 
 #include "emulator/core/IBusDevice.h"
+#include <atomic>
 #include <cstdint>
 #include <mutex>
 #include <sstream>
@@ -22,22 +23,23 @@
 //
 //   $15  Filter Cutoff Lo (3-bit)
 //   $16  Filter Cutoff Hi
-//   $17  Filter Res/Route
-//   $18  Mode/Volume (bits 3–0 = master volume 0–15)
+//   $17  Res/Filt  — bits 7–4: resonance, bits 3–0: route voices through filter
+//   $18  Mode/Vol  — bits 6–4: HP/BP/LP, bit 7: 3OFF, bits 3–0: master volume
 //   $19  PotX  (read-only, stub → $FF)
 //   $1A  PotY  (read-only, stub → $FF)
-//   $1B  OSC3  (read-only, stub → $00)
-//   $1C  ENV3  (read-only, stub → $00)
+//   $1B  OSC3  (read-only — voice 3 waveform high byte)
+//   $1C  ENV3  (read-only — voice 3 envelope level)
 //
-// Control register bits (per-voice, offset +4):
+// Control register bits (per-voice):
 //   bit 0 = GATE, 1 = SYNC, 2 = RING, 3 = TEST
 //   bit 4 = TRI,  5 = SAW,  6 = PULSE, 7 = NOISE
 //
-// Synthesis notes:
-//   - 32-bit phase accumulator; SID 24-bit phase = accum >> 8
-//   - ADSR at audio sample rate (not cycle-exact, but audibly correct)
-//   - 23-bit noise LFSR; tapped at SID-correct positions
-//   - Filter and ring/sync modulation: future step
+// Synthesis:
+//   - 24-bit phase accumulator per voice (wraps at 2^24)
+//   - Hard sync: voice N resets when voice (N-1)'s phase wraps
+//   - Ring mod: when RING+TRI set, triangle fold uses XOR with source MSB
+//   - Chamberlin state-variable filter: LP, BP, HP modes selectable
+//   - 23-bit noise LFSR with correct 6581 tap positions
 // ---------------------------------------------------------------------------
 
 class SID6581 : public IBusDevice {
@@ -65,8 +67,6 @@ public:
         return s.str();
     }
 
-    // Called from the SDL audio callback (audio thread).
-    // Fills `frames` interleaved-mono float samples into `out`.
     void generateSamples(float* out, int frames, float sampleRate);
 
     // -----------------------------------------------------------------------
@@ -108,29 +108,40 @@ public:
     static constexpr int NUM_REGS = 0x1D;
 
 private:
-    // ADSR envelope stages
     enum : uint8_t { ENV_ATK=0, ENV_DEC=1, ENV_SUS=2, ENV_REL=3, ENV_OFF=4 };
 
     struct Voice {
         uint32_t phase    = 0;
-        uint32_t lfsr     = 0x7FFFF8;  // 23-bit noise LFSR (initial state matches 6581 power-on)
-        float    envLevel = 0.0f;      // 0.0–1.0
+        uint32_t lfsr     = 0x7FFFF8;
+        float    envLevel = 0.0f;
         uint8_t  envStage = ENV_OFF;
         bool     prevGate = false;
     };
 
     uint8_t regs_[NUM_REGS] = {};
-    Voice   osc_[3];                   // osc_ is audio-thread-only; no lock needed
-    mutable std::mutex mutex_;         // protects regs_[]
+    Voice   osc_[3];
 
-    // ADSR attack time table (ms), indexed by 4-bit nibble
+    // Chamberlin SVF state (single filter shared across all routed voices)
+    float filterLP_ = 0.0f;
+    float filterBP_ = 0.0f;
+
+    // OSC3 / ENV3 read-back (written by audio thread, read by emulator thread;
+    // 8-bit writes are atomic on all supported platforms so no lock needed)
+    std::atomic<uint8_t> osc3Out_{0};
+    std::atomic<uint8_t> env3Out_{0};
+
+    mutable std::mutex mutex_;  // protects regs_[]
+
     static const float kAttackMs[16];
-    // ADSR decay/release time table (ms), indexed by 4-bit nibble
     static const float kDecRelMs[16];
 
-    // SID PAL clock — used for oscillator phase increment calculation
     static constexpr double kSidClock = 985248.0;
 
-    float synthVoice(int v, uint8_t ctrl, uint32_t freq, uint16_t pw,
-                     uint8_t ad, uint8_t sr, float sampleRate);
+    // Waveform + envelope for one voice.
+    // Phase advance and sync are handled externally in generateSamples.
+    // prevPhase: phase before this sample's advance (for LFSR clocking).
+    // srcPhase:  source oscillator phase before advance (for ring mod).
+    float synthVoice(int v, uint8_t ctrl, uint16_t pw,
+                     uint8_t ad, uint8_t sr, float sampleRate,
+                     uint32_t prevPhase, uint32_t srcPhase);
 };
