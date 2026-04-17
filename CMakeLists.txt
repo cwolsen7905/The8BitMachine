@@ -84,6 +84,7 @@ set(SOURCES
     src/emulator/cpu/CPU6510.cpp
     src/emulator/cpu/CPU8502.cpp
     src/emulator/cpu/CPU65C02.cpp
+    src/emulator/cpu/CPUZ80.cpp
     src/emulator/cpu/Disassembler.cpp
     src/emulator/devices/BankedMemory.cpp
     src/emulator/devices/BankController.cpp

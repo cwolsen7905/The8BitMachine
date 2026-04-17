@@ -16,6 +16,7 @@ Machine::Machine() : c64IOSpace_(&vic_, &sid_, &cia1_, &cia2_) {
     cpu6510_.connectBus(&bus_);
     cpu8502_.connectBus(&bus_);
     cpu65c02_.connectBus(&bus_);
+    cpuZ80_.connectBus(&bus_);
     vic_.connectBus(&bus_);
 }
 
@@ -229,6 +230,7 @@ bool Machine::selectCPU(const std::string& name) {
     if      (name == cpu6510_.cpuName())  next = &cpu6510_;
     else if (name == cpu8502_.cpuName())  next = &cpu8502_;
     else if (name == cpu65c02_.cpuName()) next = &cpu65c02_;
+    else if (name == cpuZ80_.cpuName())   next = &cpuZ80_;
     if (!next) return false;
     activeCpu_ = next;
     activeCpu_->reset();

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "preset_type": "spectrum48",
+  "name": "ZX Spectrum 48K",
+  "description": "Zilog Z80 @ 3.5 MHz · ULA · 16 KB ROM + 48 KB RAM",
+  "cpu": "Zilog Z80",
+  "cycles_per_frame": 69888,
+  "key_matrix_transpose": false,
+  "roms": [
+    { "key": "rom", "label": "ROM", "description": "16 KB Spectrum 48K ROM (spectrum.rom)" }
+  ]
+}

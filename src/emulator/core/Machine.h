@@ -14,6 +14,7 @@
 #include "emulator/cpu/CPU6510.h"
 #include "emulator/cpu/CPU8502.h"
 #include "emulator/cpu/CPU65C02.h"
+#include "emulator/cpu/CPUZ80.h"
 #include "emulator/devices/Memory.h"
 
 #include <functional>
@@ -166,6 +167,7 @@ private:
     CPU6510  cpu6510_;
     CPU8502  cpu8502_;
     CPU65C02 cpu65c02_;
+    CPUZ80   cpuZ80_;
     ICPU*    activeCpu_ = &cpu8502_;
 
     Bus bus_;
