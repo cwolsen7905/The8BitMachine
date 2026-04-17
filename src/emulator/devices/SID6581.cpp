@@ -1,4 +1,5 @@
 #include "emulator/devices/SID6581.h"
+#include <imgui.h>
 #include <algorithm>
 #include <cstring>
 #include <cmath>
@@ -262,4 +263,82 @@ void SID6581::generateSamples(float* out, int frames, float sampleRate) {
         // ---- Step 7: mix and master volume ----
         out[i] = ((directOut + filtOut) / 3.0f) * masterVol;
     }
+}
+
+// ---------------------------------------------------------------------------
+// ImGui panel
+// ---------------------------------------------------------------------------
+
+void SID6581::drawPanel(const char* title, bool* open) {
+    ImGui::SetNextWindowSize({ 380.0f, 380.0f }, ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin(title, open)) { ImGui::End(); return; }
+
+    uint8_t r[NUM_REGS];
+    { std::lock_guard<std::mutex> lock(mutex_); std::memcpy(r, regs_, NUM_REGS); }
+
+    static constexpr int vBase[3] = { 0x00, 0x07, 0x0E };
+    static constexpr const char* wfNames[] = { "---","TRI","SAW","T+S",
+                                                "PUL","T+P","S+P","T+S+P","NOI" };
+
+    for (int v = 0; v < 3; ++v) {
+        char hdr[16];
+        std::snprintf(hdr, sizeof(hdr), "Voice %d", v + 1);
+        if (!ImGui::CollapsingHeader(hdr, ImGuiTreeNodeFlags_DefaultOpen)) continue;
+
+        const int  b    = vBase[v];
+        const uint16_t freq = static_cast<uint16_t>(r[b+1]) << 8 | r[b];
+        const uint16_t pw   = (static_cast<uint16_t>(r[b+3] & 0x0F) << 8) | r[b+2];
+        const uint8_t  ctrl = r[b+4];
+        const uint8_t  ad   = r[b+5];
+        const uint8_t  sr   = r[b+6];
+
+        // Waveform
+        uint8_t wfIdx = (ctrl >> 4) & 0x0F;
+        // collapse multi-bit to index 0-8
+        int wi = 0;
+        if      (wfIdx == 0x1) wi = 1;
+        else if (wfIdx == 0x2) wi = 2;
+        else if (wfIdx == 0x3) wi = 3;
+        else if (wfIdx == 0x4) wi = 4;
+        else if (wfIdx == 0x5) wi = 5;
+        else if (wfIdx == 0x6) wi = 6;
+        else if (wfIdx == 0x7) wi = 7;
+        else if (wfIdx == 0x8) wi = 8;
+
+        ImGui::Text("Freq $%04X  PW $%03X  Wave %-5s",
+            (unsigned)freq, (unsigned)pw, wfNames[wi]);
+        ImGui::Text("A=%X D=%X S=%X R=%X",
+            (ad >> 4) & 0xF, ad & 0xF, (sr >> 4) & 0xF, sr & 0xF);
+        ImGui::SameLine(120);
+        if (ctrl & 0x01) ImGui::TextColored({0.2f,1,0.3f,1}, "GATE ");
+        else             ImGui::TextDisabled("GATE ");
+        ImGui::SameLine();
+        if (ctrl & 0x02) ImGui::TextColored({1,0.8f,0.2f,1}, "SYNC ");
+        else             ImGui::TextDisabled("SYNC ");
+        ImGui::SameLine();
+        if (ctrl & 0x04) ImGui::TextColored({1,0.8f,0.2f,1}, "RING");
+        else             ImGui::TextDisabled("RING");
+    }
+
+    if (ImGui::CollapsingHeader("Filter / Volume", ImGuiTreeNodeFlags_DefaultOpen)) {
+        const uint16_t fc  = (static_cast<uint16_t>(r[REG_FC_HI]) << 3) | (r[REG_FC_LO] & 0x07);
+        const uint8_t  res = (r[REG_RES_FILT] >> 4) & 0x0F;
+        const uint8_t  vol = r[REG_MODE_VOL] & 0x0F;
+        const uint8_t  fm  = (r[REG_MODE_VOL] >> 4) & 0x07;
+        ImGui::Text("Cutoff $%03X  Res %X  Vol %X",
+            (unsigned)fc, (unsigned)res, (unsigned)vol);
+        ImGui::Text("Mode  ");
+        ImGui::SameLine();
+        if (fm & 0x1) ImGui::TextColored({0.4f,0.8f,1,1}, "LP "); else ImGui::TextDisabled("LP ");
+        ImGui::SameLine();
+        if (fm & 0x2) ImGui::TextColored({0.4f,0.8f,1,1}, "BP "); else ImGui::TextDisabled("BP ");
+        ImGui::SameLine();
+        if (fm & 0x4) ImGui::TextColored({0.4f,0.8f,1,1}, "HP");  else ImGui::TextDisabled("HP");
+        ImGui::Text("Route V1:%s V2:%s V3:%s",
+            (r[REG_RES_FILT] & 0x01) ? "Y" : "N",
+            (r[REG_RES_FILT] & 0x02) ? "Y" : "N",
+            (r[REG_RES_FILT] & 0x04) ? "Y" : "N");
+    }
+
+    ImGui::End();
 }

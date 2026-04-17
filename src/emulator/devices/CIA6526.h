@@ -36,6 +36,8 @@ public:
     uint8_t     read (uint16_t offset) const override;
     void        write(uint16_t offset, uint8_t value) override;
     std::string statusLine() const override;
+    bool        hasPanel()  const override { return true; }
+    void        drawPanel(const char* title, bool* open) override;
 
     // Callback fired when an unmasked interrupt fires.
     std::function<void()> onIRQ;

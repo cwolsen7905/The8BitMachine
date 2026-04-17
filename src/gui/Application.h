@@ -3,6 +3,7 @@
 #include <SDL.h>
 #include <imgui.h>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -12,6 +13,7 @@
 #  include <SDL_opengl.h>
 #endif
 
+#include "emulator/core/IBusDevice.h"
 #include "emulator/core/Machine.h"
 #include "imgui_memory_editor.h"
 
@@ -45,6 +47,11 @@ private:
     // Breakpoints
     // -----------------------------------------------------------------------
     std::unordered_set<uint16_t> breakpoints_;
+
+    // -----------------------------------------------------------------------
+    // Per-device panel visibility  (keyed by IBusDevice*)
+    // -----------------------------------------------------------------------
+    std::unordered_map<const IBusDevice*, bool> devicePanelVisible_;
 
     // -----------------------------------------------------------------------
     // UI visibility toggles

@@ -1,6 +1,7 @@
 #include "emulator/devices/VIC6566.h"
 #include "emulator/devices/CharROM.h"
 #include "emulator/core/Bus.h"
+#include <imgui.h>
 
 #include <cstring>
 #include <sstream>
@@ -145,6 +146,65 @@ void VIC6566::write(uint16_t off, uint8_t val) {
 // ---------------------------------------------------------------------------
 // statusLine
 // ---------------------------------------------------------------------------
+void VIC6566::drawPanel(const char* title, bool* open) {
+    ImGui::SetNextWindowSize({ 340.0f, 300.0f }, ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin(title, open)) { ImGui::End(); return; }
+
+    // Colour swatch helper using VIC-II NTSC palette
+    auto swatch = [](uint8_t idx) {
+        idx &= 0x0F;
+        // Standard VIC-II 16-colour palette (approximate RGB)
+        static const ImVec4 pal[16] = {
+            {0,0,0,1},{1,1,1,1},{0.53f,0.13f,0.12f,1},{0.44f,0.75f,0.75f,1},
+            {0.55f,0.19f,0.6f,1},{0.31f,0.62f,0.3f,1},{0.11f,0.1f,0.6f,1},
+            {0.95f,0.95f,0.45f,1},{0.55f,0.37f,0.1f,1},{0.34f,0.26f,0,1},
+            {0.76f,0.38f,0.35f,1},{0.31f,0.31f,0.31f,1},{0.5f,0.5f,0.5f,1},
+            {0.65f,0.95f,0.62f,1},{0.45f,0.43f,0.9f,1},{0.7f,0.7f,0.7f,1},
+        };
+        ImGui::ColorButton("##c", pal[idx],
+            ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoBorder,
+            ImVec2(14, 14));
+    };
+
+    if (ImGui::CollapsingHeader("Raster", ImGuiTreeNodeFlags_DefaultOpen)) {
+        int rasterCompare = ((reg_[REG_CR1] & 0x80) << 1) | reg_[REG_RSTR];
+        ImGui::Text("Current   $%03X  (%d)", rasterY_, rasterY_);
+        ImGui::Text("Compare   $%03X  (%d)", rasterCompare, rasterCompare);
+        ImGui::Text("ISR $%02X  IEN $%02X",
+            (unsigned)reg_[REG_ISR], (unsigned)reg_[REG_IEN]);
+    }
+
+    if (ImGui::CollapsingHeader("Colours", ImGuiTreeNodeFlags_DefaultOpen)) {
+        auto row = [&](const char* label, uint8_t regIdx) {
+            ImGui::Text("%-10s $%X  ", label, (unsigned)(reg_[regIdx] & 0x0F));
+            ImGui::SameLine();
+            swatch(reg_[regIdx] & 0x0F);
+        };
+        row("Border",  REG_BORDC);
+        row("BG0",     REG_BG0);
+        row("BG1",     REG_BG1);
+        row("BG2",     REG_BG2);
+        row("BG3",     REG_BG3);
+    }
+
+    if (ImGui::CollapsingHeader("Control")) {
+        const bool den  = (reg_[REG_CR1] & 0x10) != 0;
+        const bool bm   = (reg_[REG_CR1] & 0x20) != 0;
+        const bool ecm  = (reg_[REG_CR1] & 0x40) != 0;
+        const bool mcm  = (reg_[REG_CR2] & 0x10) != 0;
+        ImGui::Text("CR1 $%02X  CR2 $%02X  MPTR $%02X",
+            (unsigned)reg_[REG_CR1],
+            (unsigned)reg_[REG_CR2],
+            (unsigned)reg_[REG_MPTR]);
+        if (den)  { ImGui::SameLine(); ImGui::TextColored({0.2f,1,0.3f,1}, "DEN"); }
+        if (bm)   { ImGui::SameLine(); ImGui::TextColored({1,0.8f,0.2f,1}, "BM"); }
+        if (ecm)  { ImGui::SameLine(); ImGui::TextColored({1,0.8f,0.2f,1}, "ECM"); }
+        if (mcm)  { ImGui::SameLine(); ImGui::TextColored({1,0.8f,0.2f,1}, "MCM"); }
+    }
+
+    ImGui::End();
+}
+
 std::string VIC6566::statusLine() const {
     const bool den = (reg_[REG_CR1] & 0x10) != 0;
     std::ostringstream ss;

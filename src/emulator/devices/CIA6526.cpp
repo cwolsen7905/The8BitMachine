@@ -1,4 +1,5 @@
 #include "emulator/devices/CIA6526.h"
+#include <imgui.h>
 #include <sstream>
 #include <iomanip>
 
@@ -311,4 +312,78 @@ std::string CIA6526::statusLine() const {
       << (int)(tod10_ & 0x0F)
       << ((todHr_ & 0x80) ? "pm" : "am");
     return s.str();
+}
+
+// ---------------------------------------------------------------------------
+// ImGui panel
+// ---------------------------------------------------------------------------
+
+void CIA6526::drawPanel(const char* title, bool* open) {
+    ImGui::SetNextWindowSize({ 360.0f, 380.0f }, ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin(title, open)) { ImGui::End(); return; }
+
+    // Helper: coloured bit indicator
+    auto bitLabel = [](const char* label, bool set) {
+        if (set) ImGui::TextColored({ 0.2f, 1.0f, 0.3f, 1.0f }, "%s", label);
+        else     ImGui::TextDisabled("%s", label);
+        ImGui::SameLine();
+    };
+
+    if (ImGui::CollapsingHeader("Timer A", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Text("Counter  $%04X    Latch $%04X",
+            (unsigned)timerACounter_, (unsigned)timerALatch_);
+        ImGui::Text("CRA      $%02X", (unsigned)cra_);
+        ImGui::SameLine(120);
+        bitLabel("START",   cra_ & CRA_START);
+        bitLabel("ONESHOT", cra_ & CRA_ONESHOT);
+        ImGui::NewLine();
+    }
+
+    if (ImGui::CollapsingHeader("Timer B", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Text("Counter  $%04X    Latch $%04X",
+            (unsigned)timerBCounter_, (unsigned)timerBLatch_);
+        ImGui::Text("CRB      $%02X", (unsigned)crb_);
+        ImGui::SameLine(120);
+        bitLabel("START",   crb_ & CRB_START);
+        bitLabel("ONESHOT", crb_ & CRB_ONESHOT);
+        bitLabel((crb_ & CRB_INMODE) ? "cnt:TA" : "cnt:ϕ2", true);
+        ImGui::NewLine();
+    }
+
+    if (ImGui::CollapsingHeader("ICR", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Text("Flags $%02X  ", (unsigned)icrFlags_);
+        ImGui::SameLine();
+        bitLabel("TA",  icrFlags_ & ICR_TA);
+        bitLabel("TB",  icrFlags_ & ICR_TB);
+        bitLabel("TOD", icrFlags_ & ICR_TOD);
+        bitLabel("IR",  icrFlags_ & ICR_IR);
+        ImGui::NewLine();
+        ImGui::Text("Mask  $%02X  ", (unsigned)icrMask_);
+        ImGui::SameLine();
+        bitLabel("TA",  icrMask_ & ICR_TA);
+        bitLabel("TB",  icrMask_ & ICR_TB);
+        bitLabel("TOD", icrMask_ & ICR_TOD);
+        ImGui::NewLine();
+    }
+
+    if (ImGui::CollapsingHeader("TOD Clock", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Text("Time   %02d:%02d:%02d.%d %s",
+            bcdToInt(todHr_ & 0x7F),
+            bcdToInt(todMin_), bcdToInt(todSec_),
+            (int)(tod10_ & 0x0F),
+            (todHr_ & 0x80) ? "PM" : "AM");
+        ImGui::Text("Alarm  %02d:%02d:%02d.%d %s",
+            bcdToInt(todAlarmHr_ & 0x7F),
+            bcdToInt(todAlarmMin_), bcdToInt(todAlarmSec_),
+            (int)(todAlarm10_ & 0x0F),
+            (todAlarmHr_ & 0x80) ? "PM" : "AM");
+    }
+
+    if (ImGui::CollapsingHeader("Ports")) {
+        ImGui::Text("PRA $%02X  DDRA $%02X", (unsigned)pra_,  (unsigned)ddra_);
+        ImGui::Text("PRB $%02X  DDRB $%02X", (unsigned)prb_,  (unsigned)ddrb_);
+        ImGui::Text("SDR $%02X", (unsigned)sdr_);
+    }
+
+    ImGui::End();
 }

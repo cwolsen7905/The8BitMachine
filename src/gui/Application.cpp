@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <unordered_set>
 
 // ---------------------------------------------------------------------------
 // Construction / destruction
@@ -332,6 +333,20 @@ void Application::render() {
     if (showDisasm_)   drawDisassembler();
     if (showMemView_)  drawMemoryViewer();
     if (showDesigner_) drawMachineDesigner();
+
+    // Per-device panels — one window per unique device that opted in
+    {
+        std::unordered_set<const IBusDevice*> rendered;
+        for (const auto& entry : machine_.bus().devices()) {
+            if (!entry.device || !entry.device->hasPanel()) continue;
+            if (!rendered.insert(entry.device).second) continue;
+            auto it = devicePanelVisible_.find(entry.device);
+            if (it == devicePanelVisible_.end() || !it->second) continue;
+            bool open = true;
+            entry.device->drawPanel(entry.label.c_str(), &open);
+            if (!open) devicePanelVisible_[entry.device] = false;
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -402,6 +417,18 @@ void Application::drawMenuBar() {
         ImGui::MenuItem("Terminal",         nullptr, &showTerminal_);
         ImGui::MenuItem("CPU State",        nullptr, &showCpuState_);
         ImGui::MenuItem("Machine Designer", nullptr, &showDesigner_);
+
+        // Dynamic device panels — one entry per unique device with hasPanel()
+        std::unordered_set<const IBusDevice*> seen;
+        bool anyDevice = false;
+        for (const auto& entry : machine_.bus().devices()) {
+            if (!entry.device || !entry.device->hasPanel()) continue;
+            if (!seen.insert(entry.device).second) continue;
+            if (!anyDevice) { ImGui::Separator(); anyDevice = true; }
+            bool& vis = devicePanelVisible_[entry.device];
+            ImGui::MenuItem(entry.label.c_str(), nullptr, &vis);
+        }
+
         ImGui::EndMenu();
     }
 
@@ -558,41 +585,6 @@ void Application::drawCpuState() {
     ImGui::Separator();
     ImGui::Text("Cycles  %llu", (unsigned long long)cycleCount_);
 
-    // CIA1 summary
-    ImGui::Separator();
-    ImGui::TextUnformatted("CIA1");
-    ImGui::Separator();
-
-    {
-        const CIA6526& c = machine_.cia1();
-
-        // Timer A
-        ImGui::Text("Timer A  $%04X  CRA $%02X  %s",
-            (unsigned)c.timerACounter(),
-            (unsigned)c.crA(),
-            (c.crA() & CIA6526::CRA_START) ? "RUN" : "STP");
-
-        // Timer B
-        ImGui::Text("Timer B  $%04X  CRB $%02X  %s  %s",
-            (unsigned)c.timerBCounter(),
-            (unsigned)c.crB(),
-            (c.crB() & CIA6526::CRB_START) ? "RUN" : "STP",
-            (c.crB() & CIA6526::CRB_INMODE) ? "cnt:TA" : "cnt:ϕ2");
-
-        // ICR — non-destructive peek (flags | mask)
-        ImGui::Text("ICR flg  $%02X  mask $%02X",
-            (unsigned)c.icrFlags(),
-            (unsigned)c.icrMask());
-
-        // TOD
-        uint8_t hr  = c.todHr();
-        ImGui::Text("TOD      %02d:%02d:%02d.%d %s",
-            (((hr & 0x70) >> 4) * 10 + (hr & 0x0F)),
-            ((c.todMin() >> 4) * 10 + (c.todMin() & 0x0F)),
-            ((c.todSec() >> 4) * 10 + (c.todSec() & 0x0F)),
-            (int)c.todTenths(),
-            (hr & 0x80) ? "PM" : "AM");
-    }
 
     ImGui::End();
 }

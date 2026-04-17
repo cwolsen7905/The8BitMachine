@@ -41,6 +41,8 @@ public:
     uint8_t     read (uint16_t off) const override;
     void        write(uint16_t off, uint8_t val) override;
     std::string statusLine() const override;
+    bool        hasPanel()  const override { return true; }
+    void        drawPanel(const char* title, bool* open) override;
 
     // -----------------------------------------------------------------------
     // Bus access — VIC needs to read character/bitmap data from RAM.

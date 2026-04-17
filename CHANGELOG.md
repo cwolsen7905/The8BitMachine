@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.23.0] - 2026-04-17
+
+### Added
+- **Per-device ImGui panels** — `IBusDevice` gains optional `hasPanel()` / `drawPanel(title, open)` virtual methods; devices opt in by overriding both
+- **CIA6526 panel** — Timer A (counter, latch, CRA bits), Timer B (counter, latch, CRB bits + INMODE source), ICR flags/mask with green/grey bit indicators, TOD clock + alarm, Port A/B data and direction registers; opened from View menu per CIA instance
+- **VIC6566 panel** — current raster line + compare value, ISR/IEN, border and four background colour swatches with VIC-II palette preview, CR1/CR2/MPTR with DEN/BM/ECM/MCM indicators
+- **SID6581 panel** — all three voices (frequency, pulse width, waveform, A/D/S/R, GATE/SYNC/RING indicators), filter section (cutoff, resonance, LP/BP/HP mode, voice routing), master volume
+- **View menu** — device panels listed dynamically under a separator; only devices with `hasPanel()` appear; each entry is a checkbox toggle; two CIAs show as separate entries with their bus labels
+
+### Changed
+- CIA1 section removed from CPU State panel; use the dedicated CIA panel instead (also fixes the destructive `read(REG_ICR)` bug where the UI was consuming IRQ flags every frame)
+
+---
+
 ## [0.22.0] - 2026-04-17
 
 ### Changed

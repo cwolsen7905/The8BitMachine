@@ -25,4 +25,10 @@ public:
 
     // One-line status for the Machine Designer / debug panel.
     virtual std::string statusLine() const { return ""; }
+
+    // Optional full ImGui panel.  Return true from hasPanel() to opt in.
+    // drawPanel() is called each frame while the panel is open; title comes
+    // from the bus entry label so two CIAs get distinct window titles.
+    virtual bool hasPanel() const { return false; }
+    virtual void drawPanel(const char* title, bool* open) { (void)title; (void)open; }
 };
