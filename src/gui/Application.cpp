@@ -912,23 +912,9 @@ void Application::drawMachineDesigner() {
                         if (invalid) {
                             designerEditFocus_ = true;  // reject Enter — keep editing
                         } else {
-                            // Check if the other address cell has a pending invalid
-                            // value that is now valid with this commit.
-                            const int otherCol = 1 - semanticCol;
-                            if (designerInvalidRow_ == i && designerInvalidCol_ == otherCol) {
-                                char* ep2;
-                                unsigned long ov = std::strtoul(designerInvalidBuf_, &ep2, 16);
-                                uint16_t finalS = (semanticCol == 0) ? ns : (uint16_t)ov;
-                                uint16_t finalE = (semanticCol == 1) ? ne : (uint16_t)ov;
-                                if (ep2 != designerInvalidBuf_ && ov <= 0xFFFF && finalS <= finalE) {
-                                    machine_.bus().modifyAt((size_t)i, finalS, finalE);
-                                    designerInvalidRow_ = designerInvalidCol_ = -1;
-                                    designerEditRow_ = designerEditCol_ = -1;
-                                    return;
-                                }
-                            }
-                            // Only clear invalid state if it belongs to this cell.
-                            if (designerInvalidRow_ == i && designerInvalidCol_ == semanticCol)
+                            // Any valid commit clears all pending invalid state for
+                            // this row — stale markers from the other cell are gone.
+                            if (designerInvalidRow_ == i)
                                 designerInvalidRow_ = designerInvalidCol_ = -1;
                             machine_.bus().modifyAt((size_t)i, ns, ne);
                             designerEditRow_ = designerEditCol_ = -1;
@@ -941,8 +927,7 @@ void Application::drawMachineDesigner() {
                             designerInvalidCol_ = semanticCol;
                             std::strncpy(designerInvalidBuf_, designerEditBuf_, 5);
                         } else {
-                            // Only clear invalid state if it belongs to this cell.
-                            if (designerInvalidRow_ == i && designerInvalidCol_ == semanticCol)
+                            if (designerInvalidRow_ == i)
                                 designerInvalidRow_ = designerInvalidCol_ = -1;
                         }
                         designerEditRow_ = designerEditCol_ = -1;

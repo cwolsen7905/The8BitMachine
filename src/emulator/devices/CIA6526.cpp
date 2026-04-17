@@ -206,7 +206,7 @@ uint8_t CIA6526::read(uint16_t offset) const {
         case REG_TOD_10: {
             auto* self = const_cast<CIA6526*>(this);
             self->todLatched_ = false;
-            return tod10_;
+            return todLatch10_;  // return frozen snapshot, not live counter
         }
 
         case REG_SDR: return sdr_;
