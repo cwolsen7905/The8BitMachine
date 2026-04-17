@@ -33,3 +33,33 @@ std::string FileDialog::openFile(const char*                     title,
     }
     return {};
 }
+
+std::string FileDialog::saveFile(const char*                     title,
+                                 const std::string&              defaultName,
+                                 const std::vector<std::string>& filters)
+{
+    @autoreleasepool {
+        NSSavePanel* panel = [NSSavePanel savePanel];
+        panel.title = [NSString stringWithUTF8String:title];
+
+        if (!defaultName.empty())
+            panel.nameFieldStringValue =
+                [NSString stringWithUTF8String:defaultName.c_str()];
+
+        if (!filters.empty()) {
+            NSMutableArray<NSString*>* types = [NSMutableArray array];
+            for (const auto& ext : filters)
+                [types addObject:[NSString stringWithUTF8String:ext.c_str()]];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            panel.allowedFileTypes = types;
+#pragma clang diagnostic pop
+        }
+
+        if ([panel runModal] == NSModalResponseOK) {
+            NSURL* url = panel.URL;
+            if (url) return std::string(url.path.UTF8String);
+        }
+    }
+    return {};
+}

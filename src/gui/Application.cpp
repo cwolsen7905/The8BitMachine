@@ -214,10 +214,10 @@ void Application::drawMenuBar() {
 
         ImGui::Separator();
 
-        if (ImGui::MenuItem("Load State", "Ctrl+L"))
-            termPrint("[File] Load State — not yet implemented");
-        if (ImGui::MenuItem("Save State", "Ctrl+S"))
-            termPrint("[File] Save State — not yet implemented");
+        if (ImGui::MenuItem("Save Machine Config..."))
+            saveMachineConfigDialog();
+        if (ImGui::MenuItem("Load Machine Config..."))
+            loadMachineConfigDialog();
 
         ImGui::Separator();
 
@@ -877,4 +877,34 @@ void Application::loadRomDialog() {
     }());
     termPrint(machine_.cpu().stateString());
     termPrint("---");
+}
+
+// ---------------------------------------------------------------------------
+// Machine config dialogs
+// ---------------------------------------------------------------------------
+
+void Application::saveMachineConfigDialog() {
+    const std::string path = FileDialog::saveFile(
+        "Save Machine Config", "machine.json", {"json"});
+    if (path.empty()) return;
+
+    const auto result = machine_.saveConfig(path);
+    termPrint(result.message);
+}
+
+void Application::loadMachineConfigDialog() {
+    const std::string path = FileDialog::openFile(
+        "Load Machine Config", {"json"});
+    if (path.empty()) return;
+
+    const auto result = machine_.loadConfig(path);
+    termPrint(result.message);
+
+    if (result.ok) {
+        machine_.reset();
+        cycleCount_      = 0;
+        emulatorRunning_ = false;
+        termPrint("[Config] Machine reset with new address map.");
+        termPrint(machine_.cpu().stateString());
+    }
 }

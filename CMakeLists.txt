@@ -43,6 +43,17 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(imgui)
 
+# ---------------------------------------------------------------------------
+# nlohmann/json  (header-only; fetched at configure time)
+# ---------------------------------------------------------------------------
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.11.3
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
 add_library(imgui_lib STATIC
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
@@ -81,7 +92,7 @@ endif()
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE src)
-target_link_libraries(${PROJECT_NAME} PRIVATE imgui_lib SDL2::SDL2 OpenGL::GL)
+target_link_libraries(${PROJECT_NAME} PRIVATE imgui_lib SDL2::SDL2 OpenGL::GL nlohmann_json::nlohmann_json)
 
 if(APPLE)
     target_compile_definitions(${PROJECT_NAME} PRIVATE GL_SILENCE_DEPRECATION)

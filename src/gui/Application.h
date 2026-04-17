@@ -90,4 +90,6 @@ private:
     void emulatorStep();
     void emulatorReset();
     void loadRomDialog();
+    void saveMachineConfigDialog();
+    void loadMachineConfigDialog();
 };

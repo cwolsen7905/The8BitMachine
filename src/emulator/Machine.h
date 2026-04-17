@@ -8,6 +8,12 @@
 #include <functional>
 #include <string>
 
+// Config save/load result
+struct MachineConfigResult {
+    bool        ok      = false;
+    std::string message;   // human-readable status for the terminal
+};
+
 // ---------------------------------------------------------------------------
 // Machine — owns all emulator components and wires them together.
 //
@@ -47,6 +53,12 @@ public:
     void setCharOutCallback(std::function<void(uint8_t)> cb);
     void setIRQCallback(std::function<void()> cb);   // CIA1 → CPU IRQ
 
+    // -----------------------------------------------------------------------
+    // Config — save / load the address map as JSON
+    // -----------------------------------------------------------------------
+    MachineConfigResult saveConfig(const std::string& path) const;
+    MachineConfigResult loadConfig(const std::string& path);
+
 private:
     // Device instances (Machine owns them; Bus holds non-owning pointers)
     Memory  ram_;
@@ -57,4 +69,8 @@ private:
     Bus     bus_;
 
     void buildDefaultMap();
+
+    // Map between a device pointer and its stable string ID for JSON
+    const char*  idForDevice(const IBusDevice* dev) const;
+    IBusDevice*  deviceForId(const std::string& id);
 };
