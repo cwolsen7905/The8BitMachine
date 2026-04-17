@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.15.0] - 2026-04-16
+
+### Added
+- **SID6581 stub** (`$D400–$D7FF`) — all 29 MOS 6581/8580 registers modelled; writes stored, reads return `$FF` (write-only behaviour matches real hardware); read-only registers PotX/PotY return `$FF`, OSC3/ENV3 return `$00`
+- `statusLine()` shows master volume, filter cutoff frequency, and voice 1 frequency word in the Machine Designer panel
+- Config save/load recognises device id `"sid"`
+
+---
+
 ## [0.14.0] - 2026-04-16
 
 ### Added

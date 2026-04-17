@@ -10,7 +10,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ---
 
-## Current State  (v0.14)
+## Current State  (v0.15)
 
 ### Machine Designer
 - **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and an optional `statusLine()` for the designer panel
@@ -55,6 +55,7 @@ WDC 65C02 additions:
 - 64 KB flat RAM; reset vector points to the loaded program or the built-in NOP stub at `$0200`
 - **CIA1 (MOS 6526) at `$F100–$F1FF`** — Timer A with IRQ, ICR mask/flag, data ports PRA/PRB; CIA1 IRQ wired to CPU IRQ line
 - **CIA2 stub at `$F200–$F2FF`** — registers readable/writable, no side effects yet
+- **SID6581 stub at `$D400–$D7FF`** — all 29 MOS 6581/8580 registers; writes stored, read-only registers stubbed; Machine Designer shows volume, filter cutoff, and voice 1 frequency
 - **CHAR_OUT port at `$F000`** — CPU writes here appear in the Terminal panel (line-buffered; flushed on LF)
 - **F10 instruction step** — runs the CPU until the current instruction completes
 - **Configurable clock speed** — Emulator → Speed presets: ~60 kHz (debug), ~500 kHz, ~1 MHz, ~2 MHz; effective MHz shown in the menu bar
@@ -202,7 +203,7 @@ Device instances are owned by `Machine`.  The default map is:
 - [x] **JSON machine config** — save and load machine definitions (File → Save/Load Machine Config)
 - [x] **Second CPU (WDC 65C02)** — selectable at runtime via Machine Designer; 27 CMOS opcode patches, JMP indirect bug fixed
 - [x] **VIC-IIe** (`$D000–$D3FF`) — register file, raster IRQ, border + background colour, 40×25 character mode with embedded open font
-- [ ] SID audio stub (MOS 6581/8580)
+- [x] **SID stub (MOS 6581/8580)** at `$D400–$D7FF` — register file + status line; synthesis in a future step
 - [x] **Keyboard input via CIA1 matrix** — SDL keys routed to CIA1 `setKey(col, row)`; capture focus model with visual indicator
 - [ ] Proper ROM regions and bank switching
 

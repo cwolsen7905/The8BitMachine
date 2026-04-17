@@ -3,6 +3,7 @@
 #include "emulator/core/Bus.h"
 #include "emulator/core/ICPU.h"
 #include "emulator/devices/CIA6526.h"
+#include "emulator/devices/SID6581.h"
 #include "emulator/devices/VIC6566.h"
 #include "emulator/cpu/CPU8502.h"
 #include "emulator/cpu/CPU65C02.h"
@@ -51,9 +52,11 @@ public:
     CIA6526& cia1() { return cia1_; }
     CIA6526& cia2() { return cia2_; }
     VIC6566& vic()  { return vic_; }
+    SID6581& sid()  { return sid_; }
 
     const CIA6526& cia1() const { return cia1_; }
     const VIC6566& vic()  const { return vic_;  }
+    const SID6581& sid()  const { return sid_;  }
 
     // -----------------------------------------------------------------------
     // Lifecycle
@@ -78,6 +81,7 @@ private:
     CIA6526 cia1_;
     CIA6526 cia2_;
     VIC6566 vic_;
+    SID6581 sid_;
 
     CPU8502  cpu8502_;
     CPU65C02 cpu65c02_;
