@@ -13,6 +13,7 @@
 #endif
 
 #include "emulator/core/Machine.h"
+#include "imgui_memory_editor.h"
 
 class Application {
 public:
@@ -64,9 +65,8 @@ private:
     // -----------------------------------------------------------------------
     // Memory viewer
     // -----------------------------------------------------------------------
-    uint16_t memViewAddr_      = 0x0000;
-    char     memViewInput_[5]  = "0000";
-    bool     memViewFollowPC_  = false;
+    MemoryEditor memEditor_;
+    bool         memViewFollowPC_ = false;
 
     // -----------------------------------------------------------------------
     // Terminal

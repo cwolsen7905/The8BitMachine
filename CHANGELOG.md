@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.12.0] - 2026-04-16
+
+### Changed
+- **Memory Viewer** now uses `imgui_memory_editor` (single-header, from imgui_club) — click any byte to edit RAM live, built-in data preview and column options, PC highlighted in yellow, Follow PC toggle retained
+
+---
+
 ## [0.11.0] - 2026-04-16
 
 ### Added

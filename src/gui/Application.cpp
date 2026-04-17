@@ -28,6 +28,19 @@
 
 Application::Application() {
     std::memset(termInput_, 0, sizeof(termInput_));
+
+    memEditor_.UserData = &machine_;
+
+    memEditor_.ReadFn = [](const ImU8* /*mem*/, size_t off, void* ud) -> ImU8 {
+        return static_cast<Machine*>(ud)->bus().read(static_cast<uint16_t>(off));
+    };
+    memEditor_.WriteFn = [](ImU8* /*mem*/, size_t off, ImU8 d, void* ud) {
+        static_cast<Machine*>(ud)->bus().write(static_cast<uint16_t>(off), d);
+    };
+    memEditor_.BgColorFn = [](const ImU8* /*mem*/, size_t off, void* ud) -> ImU32 {
+        const uint16_t pc = static_cast<Machine*>(ud)->cpu().getPC();
+        return (static_cast<uint16_t>(off) == pc) ? IM_COL32(255, 255, 50, 80) : 0;
+    };
 }
 
 Application::~Application() {
@@ -675,135 +688,22 @@ void Application::emulatorReset() {
 // Memory viewer panel
 // ---------------------------------------------------------------------------
 
-static const char* memRegionLabel(uint16_t addr) {
-    if (addr == 0x0000) return "ZP ";
-    if (addr == 0x0100) return "STK";
-    if (addr == 0x0200) return "RAM";
-    if (addr == 0xF000) return "I/O";
-    if (addr == 0xF100) return "CI1";
-    if (addr == 0xF200) return "CI2";
-    if (addr == 0xF300) return "SID";
-    if (addr == 0xFFFA) return "VEC";
-    return nullptr;
-}
 
 void Application::drawMemoryViewer() {
-    ImGui::SetNextWindowSize({ 620.0f, 500.0f }, ImGuiCond_FirstUseEver);
-    ImGui::Begin("Memory Viewer", &showMemView_);
-
-    ImGui::Checkbox("Follow PC", &memViewFollowPC_);
-    ImGui::SameLine(0.0f, 16.0f);
-
-    ImGui::TextUnformatted("Go to:");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(52.0f);
-    const bool gotoEnter = ImGui::InputText(
-        "##memaddr", memViewInput_, sizeof(memViewInput_),
-        ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_EnterReturnsTrue);
-    ImGui::SameLine();
-    const bool gotoClick = ImGui::Button("Go");
-
-    if (gotoEnter || gotoClick) {
-        if (memViewInput_[0] != '\0') {
-            memViewAddr_     = static_cast<uint16_t>(std::stoul(memViewInput_, nullptr, 16));
-            memViewFollowPC_ = false;
-        }
-    }
-
-    if (memViewFollowPC_)
-        memViewAddr_ = machine_.cpu().getPC();
-
-    ImGui::SameLine(0.0f, 16.0f);
-    ImGui::TextDisabled("PC=$%04X", (unsigned)machine_.cpu().getPC());
-
-    ImGui::Separator();
-
-    constexpr int   kCols      = 16;
-    constexpr int   kTotalRows = 65536 / kCols;
-    constexpr float kRegionW   = 34.0f;
-    constexpr float kAddrW     = 52.0f;
-    constexpr float kByteW     = 22.0f;
-    constexpr float kGapW      =  8.0f;
-
-    {
-        ImGui::Dummy({ kRegionW + kAddrW, ImGui::GetTextLineHeight() });
-        for (int c = 0; c < kCols; ++c) {
-            ImGui::SameLine(kRegionW + kAddrW + c * kByteW);
-            ImGui::TextDisabled("%02X", c);
-        }
-        ImGui::SameLine(kRegionW + kAddrW + kCols * kByteW + kGapW);
-        ImGui::TextDisabled("0123456789ABCDEF");
-    }
-    ImGui::Separator();
-
-    ImGui::BeginChild("##membody", { 0.0f, 0.0f }, false, ImGuiWindowFlags_NoNav);
-
-    const int targetRow = (memViewAddr_ & 0xFFF0u) / kCols;
-
-    if (memViewFollowPC_)
-        ImGui::SetScrollY(static_cast<float>(targetRow) * ImGui::GetTextLineHeightWithSpacing()
-                          - ImGui::GetWindowHeight() * 0.25f);
-
-    {
-        const float targetY  = static_cast<float>(targetRow) * ImGui::GetTextLineHeightWithSpacing();
-        const float currentY = ImGui::GetScrollY();
-        const float windowH  = ImGui::GetWindowHeight();
-        if (targetY < currentY || targetY > currentY + windowH - windowH * 0.25f) {
-            if (!memViewFollowPC_ && (gotoEnter || gotoClick))
-                ImGui::SetScrollY(targetY - windowH * 0.25f);
-        }
-    }
-
-    ImGuiListClipper clipper;
-    clipper.Begin(kTotalRows);
-
-    Bus& bus = machine_.bus();
     const uint16_t pc = machine_.cpu().getPC();
 
-    while (clipper.Step()) {
-        for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
-            const uint16_t rowAddr = static_cast<uint16_t>(row * kCols);
+    if (memViewFollowPC_)
+        memEditor_.GotoAddrAndHighlight(pc, pc);
 
-            const char* lbl = memRegionLabel(rowAddr);
-            if (lbl)
-                ImGui::TextColored({ 0.5f, 0.8f, 1.0f, 1.0f }, "%-3s", lbl);
-            else
-                ImGui::TextDisabled("   ");
-
-            const bool rowHasPC = (pc >= rowAddr && pc < static_cast<uint16_t>(rowAddr + kCols));
-            ImGui::SameLine(kRegionW);
-            if (rowHasPC)
-                ImGui::TextColored({ 1.0f, 1.0f, 0.3f, 1.0f }, "$%04X", (unsigned)rowAddr);
-            else
-                ImGui::TextDisabled("$%04X", (unsigned)rowAddr);
-
-            for (int col = 0; col < kCols; ++col) {
-                const uint16_t addr = static_cast<uint16_t>(rowAddr + col);
-                const uint8_t  val  = bus.read(addr);
-                const bool     isPC = (addr == pc);
-
-                ImGui::SameLine(kRegionW + kAddrW + col * kByteW);
-                if (isPC)
-                    ImGui::TextColored({ 1.0f, 1.0f, 0.3f, 1.0f }, "%02X", val);
-                else if (val == 0x00)
-                    ImGui::TextDisabled("%02X", val);
-                else
-                    ImGui::Text("%02X", val);
-            }
-
-            ImGui::SameLine(kRegionW + kAddrW + kCols * kByteW + kGapW);
-            char ascii[kCols + 1];
-            for (int col = 0; col < kCols; ++col) {
-                const uint8_t v = bus.read(static_cast<uint16_t>(rowAddr + col));
-                ascii[col] = (v >= 0x20 && v < 0x7F) ? static_cast<char>(v) : '.';
-            }
-            ascii[kCols] = '\0';
-            ImGui::TextDisabled("%s", ascii);
-        }
+    // Prepend a "Follow PC" toggle above the editor's own toolbar
+    ImGui::SetNextWindowSize({ 680.0f, 500.0f }, ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Memory Viewer", &showMemView_)) {
+        ImGui::Checkbox("Follow PC", &memViewFollowPC_);
+        ImGui::SameLine(0.0f, 16.0f);
+        ImGui::TextDisabled("PC=$%04X", (unsigned)pc);
+        ImGui::Separator();
+        memEditor_.DrawContents(nullptr, 0x10000);
     }
-    clipper.End();
-
-    ImGui::EndChild();
     ImGui::End();
 }
 
