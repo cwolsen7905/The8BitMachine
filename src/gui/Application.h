@@ -78,6 +78,10 @@ private:
     char        designerAddEnd_[5]{};
     std::string designerAddError_;
 
+    // ROM loading
+    char        designerRomStart_[5]{};
+    std::string designerRomMsg_;
+
     // Inline address editing
     int         designerEditRow_    = -1;
     int         designerEditCol_    = -1;  // 0=start, 1=end

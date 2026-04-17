@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.18.0] - 2026-04-17
+
+### Added
+- **ROM device** (`src/emulator/devices/ROM`) — read-only `IBusDevice`; writes silently ignored; reads beyond loaded data return `$FF`; `.prg` files have their 2-byte Commodore load-address header stripped automatically
+- **Machine Designer → Load ROM File** — "Start" address field + "Browse..." button; file size determines the end address automatically (clamped to `$FFFF`); success shown in green, errors in red
+- `Machine::mountROM(start, end, label, path)` — loads a file into a new `ROM`, takes ownership via `dynamicDevices_`, and maps it on the bus; returns `nullptr` on file error
+- `Machine::unmountAt(busIndex)` — removes a bus entry and frees the dynamic device if no other entries reference it; replaces the previous `bus_.removeAt()` calls in the Machine Designer so ROM objects are properly released
+- Machine config save/load extended: ROM entries serialise with a `"path"` field and are reloaded from file on config load
+- `dynamicDevices_` (`vector<unique_ptr<IBusDevice>>`) added to `Machine` to own runtime-created devices
+
+### Changed
+- `Machine::resetAddressMap()` now clears `dynamicDevices_` in addition to the bus entries
+
+---
+
 ## [0.17.0] - 2026-04-17
 
 ### Changed

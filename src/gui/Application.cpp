@@ -902,7 +902,7 @@ void Application::drawMachineDesigner() {
     }
 
     if (removeIdx >= 0)
-        machine_.bus().removeAt(static_cast<size_t>(removeIdx));
+        machine_.unmountAt(static_cast<size_t>(removeIdx));
     if (moveFrom >= 0 && moveTo >= 0)
         machine_.bus().moveEntry(static_cast<size_t>(moveFrom),
                                   static_cast<size_t>(moveTo));
@@ -967,6 +967,83 @@ void Application::drawMachineDesigner() {
     if (!designerAddError_.empty()) {
         ImGui::SameLine();
         ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", designerAddError_.c_str());
+    }
+
+    // ---- Load ROM ----
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "Load ROM File");
+    ImGui::Spacing();
+
+    // Seed start field on first open
+    if (designerRomStart_[0] == '\0')
+        std::strncpy(designerRomStart_, "E000", 5);
+
+    ImGui::TextUnformatted("Start:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(54.0f);
+    ImGui::InputText("##rs", designerRomStart_, 5,
+        ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
+    ImGui::SameLine();
+
+    if (ImGui::Button("Browse...")) {
+        const std::string path = FileDialog::openFile(
+            "Select ROM file", { "bin", "prg", "rom" });
+        if (!path.empty()) {
+            char* ep = nullptr;
+            unsigned long s = std::strtoul(designerRomStart_, &ep, 16);
+            if (ep == designerRomStart_ || s > 0xFFFF) {
+                designerRomMsg_ = "Invalid start address";
+            } else {
+                // Determine end from file size (strip PRG header if .prg)
+                std::ifstream probe(path, std::ios::binary | std::ios::ate);
+                if (!probe) {
+                    designerRomMsg_ = "Cannot open file";
+                } else {
+                    size_t fileSize = static_cast<size_t>(probe.tellg());
+                    auto ext = path.size() >= 4 ? path.substr(path.size() - 4) : "";
+                    for (auto& c : ext)
+                        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                    if (ext == ".prg" && fileSize >= 2) fileSize -= 2;
+
+                    unsigned long e2 = s + fileSize - 1;
+                    if (e2 > 0xFFFF) e2 = 0xFFFF;
+
+                    auto slash = path.find_last_of("/\\");
+                    std::string fname = (slash != std::string::npos)
+                        ? path.substr(slash + 1) : path;
+                    char label[80];
+                    std::snprintf(label, sizeof(label), "%s $%04lX–$%04lX",
+                                  fname.c_str(), s, e2);
+
+                    ROM* rom = machine_.mountROM(
+                        static_cast<uint16_t>(s),
+                        static_cast<uint16_t>(e2),
+                        label, path);
+
+                    if (rom) {
+                        char msg[120];
+                        std::snprintf(msg, sizeof(msg),
+                            "Loaded %zu bytes at $%04lX–$%04lX",
+                            rom->dataSize(), s, e2);
+                        designerRomMsg_ = msg;
+                    } else {
+                        designerRomMsg_ = "Failed to load file";
+                    }
+                }
+            }
+        }
+    }
+
+    if (!designerRomMsg_.empty()) {
+        ImGui::SameLine();
+        const bool isErr = designerRomMsg_.rfind("Failed", 0) == 0 ||
+                           designerRomMsg_.rfind("Invalid", 0) == 0 ||
+                           designerRomMsg_.rfind("Cannot", 0) == 0;
+        if (isErr)
+            ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", designerRomMsg_.c_str());
+        else
+            ImGui::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s", designerRomMsg_.c_str());
     }
 
     ImGui::End();

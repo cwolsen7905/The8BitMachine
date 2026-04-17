@@ -1,0 +1,38 @@
+#pragma once
+
+#include "emulator/core/IBusDevice.h"
+#include <cstdint>
+#include <string>
+#include <vector>
+
+// ---------------------------------------------------------------------------
+// ROM — read-only memory region loaded from a file.
+//
+// Writes are silently ignored.  Reads beyond the loaded data return $FF.
+// .prg files (Commodore load-address format) have their 2-byte header
+// stripped automatically.
+// ---------------------------------------------------------------------------
+class ROM : public IBusDevice {
+public:
+    explicit ROM(std::string label = "ROM");
+
+    // Load from file.  Returns false if the file cannot be opened.
+    // .prg files: the 2-byte load-address header is stripped; the raw
+    // program bytes are stored.
+    bool loadFromFile(const std::string& path);
+
+    const std::string& filePath() const { return filePath_; }
+    size_t             dataSize() const { return data_.size(); }
+
+    // IBusDevice
+    const char* deviceName() const override { return "ROM"; }
+    void        reset()      override {}
+    uint8_t     read (uint16_t offset)          const override;
+    void        write(uint16_t, uint8_t)              override {}
+    std::string statusLine()                    const override;
+
+private:
+    std::string          label_;
+    std::string          filePath_;
+    std::vector<uint8_t> data_;
+};

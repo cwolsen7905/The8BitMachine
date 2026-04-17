@@ -27,7 +27,35 @@ void Machine::buildDefaultMap() {
 
 void Machine::resetAddressMap() {
     bus_.clearDevices();
+    dynamicDevices_.clear();
     buildDefaultMap();
+}
+
+ROM* Machine::mountROM(uint16_t start, uint16_t end,
+                       const std::string& label, const std::string& filePath) {
+    auto rom = std::make_unique<ROM>(label);
+    if (!rom->loadFromFile(filePath)) return nullptr;
+    ROM* ptr = rom.get();
+    dynamicDevices_.push_back(std::move(rom));
+    bus_.addDevice(start, end, ptr, label);
+    return ptr;
+}
+
+void Machine::unmountAt(size_t busIndex) {
+    if (busIndex >= bus_.devices().size()) return;
+    IBusDevice* dev = bus_.devices()[busIndex].device;
+    bus_.removeAt(busIndex);
+    if (!dev) return;
+    // Free dynamic device only if no other bus entries still reference it
+    bool stillMapped = false;
+    for (const auto& e : bus_.devices())
+        if (e.device == dev) { stillMapped = true; break; }
+    if (!stillMapped) {
+        auto it = std::find_if(dynamicDevices_.begin(), dynamicDevices_.end(),
+            [dev](const auto& p) { return p.get() == dev; });
+        if (it != dynamicDevices_.end())
+            dynamicDevices_.erase(it);
+    }
 }
 
 void Machine::reset() {
@@ -63,12 +91,14 @@ void Machine::setIRQCallback(std::function<void()> cb) {
 // ---------------------------------------------------------------------------
 
 const char* Machine::idForDevice(const IBusDevice* dev) const {
-    if (dev == &vic_)     return "vic";
-    if (dev == &sid_)     return "sid";
-    if (dev == &cia1_)    return "cia1";
-    if (dev == &cia2_)    return "cia2";
-    if (dev == &ram_)     return "ram";
-    if (dev == nullptr)   return "char_out";
+    if (dev == &vic_)   return "vic";
+    if (dev == &sid_)   return "sid";
+    if (dev == &cia1_)  return "cia1";
+    if (dev == &cia2_)  return "cia2";
+    if (dev == &ram_)   return "ram";
+    if (dev == nullptr) return "char_out";
+    for (const auto& d : dynamicDevices_)
+        if (d.get() == dev) return "rom";
     return "unknown";
 }
 
@@ -106,6 +136,12 @@ MachineConfigResult Machine::saveConfig(const std::string& path) const {
         ss.str("");
         ss << std::setw(4) << e.end;
         entry["end"]   = ss.str();
+
+        // Persist file path for ROM entries so they can be reloaded
+        if (std::string(idForDevice(e.device)) == "rom") {
+            const auto* rom = static_cast<const ROM*>(e.device);
+            entry["path"] = rom->filePath();
+        }
 
         devArray.push_back(entry);
     }
@@ -151,9 +187,15 @@ MachineConfigResult Machine::loadConfig(const std::string& path) {
         const uint16_t start = static_cast<uint16_t>(std::stoul(sStr, nullptr, 16));
         const uint16_t end   = static_cast<uint16_t>(std::stoul(eStr, nullptr, 16));
 
-        IBusDevice* dev = deviceForId(id);
-        if (id != "unknown")
-            bus_.addDevice(start, end, dev, label);
+        if (id == "rom") {
+            const std::string filePath = entry.value("path", "");
+            if (!filePath.empty())
+                mountROM(start, end, label, filePath);
+        } else {
+            IBusDevice* dev = deviceForId(id);
+            if (id != "unknown")
+                bus_.addDevice(start, end, dev, label);
+        }
     }
 
     const std::string cpuName = root.value("cpu", "");

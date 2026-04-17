@@ -3,6 +3,7 @@
 #include "emulator/core/Bus.h"
 #include "emulator/core/ICPU.h"
 #include "emulator/devices/CIA6526.h"
+#include "emulator/devices/ROM.h"
 #include "emulator/devices/SID6581.h"
 #include "emulator/devices/VIC6566.h"
 #include "emulator/cpu/CPU8502.h"
@@ -10,7 +11,9 @@
 #include "emulator/devices/Memory.h"
 
 #include <functional>
+#include <memory>
 #include <string>
+#include <vector>
 
 // Config save/load result
 struct MachineConfigResult {
@@ -78,6 +81,16 @@ public:
 
     void resetAddressMap();   // restore default device wiring
 
+    // Dynamic ROM management
+    // mountROM loads a file, owns the ROM object, and maps it on the bus.
+    // Returns nullptr if the file cannot be opened.
+    ROM* mountROM(uint16_t start, uint16_t end,
+                  const std::string& label, const std::string& filePath);
+
+    // unmountAt removes the bus entry at busIndex and, if the device is
+    // dynamically owned (e.g. a ROM), frees it once no other entries reference it.
+    void unmountAt(size_t busIndex);
+
     // Look up a device pointer by its config ID ("vic", "sid", "cia1", etc.)
     // Returns nullptr for "char_out" and unknown IDs.
     IBusDevice* deviceForId(const std::string& id);
@@ -97,4 +110,6 @@ private:
     Bus bus_;
 
     void buildDefaultMap();
+
+    std::vector<std::unique_ptr<IBusDevice>> dynamicDevices_;
 };
