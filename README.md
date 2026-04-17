@@ -10,14 +10,14 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ---
 
-## Current State  (v0.16)
+## Current State  (v0.17)
 
 ### Machine Designer
 - **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and an optional `statusLine()` for the designer panel
 - **`ICPU` interface** — any CPU implements `reset()`, `clock()`, `irq()`, `nmi()`, `complete()`, `stateString()`
 - **Dynamic address-space map** — devices are registered with `bus.addDevice(start, end, device)` in priority order; unmatched reads return `$FF` (open bus)
 - **Machine class** — owns device instances, builds the default address map, exposes typed accessors for the UI
-- **Machine Designer panel** (View menu) — live table of all mounted devices with address ranges and per-device status
+- **Machine Designer panel** (View menu) — fully interactive address map: add/remove devices, click Start/End to edit addresses inline, drag rows to reorder bus priority, Sort by Address, Reset to Defaults; validation highlights unreachable entries (orange), invalid ranges (red), and missing catch-all (yellow warning)
 
 ### CPU  (selectable)
 
