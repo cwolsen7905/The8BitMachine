@@ -255,26 +255,29 @@ void Machine::setIRQCallback(std::function<void()> cb) {
 
 std::vector<Machine::PanelEntry> Machine::panelDevices() {
     std::vector<PanelEntry> result;
-    std::unordered_set<IBusDevice*> seen;
+    std::unordered_set<IBusDevice*> onBus;
 
-    // For each fixed chip, prefer the bus label (which includes the mapped
-    // address range) so the menu entry is self-describing.  Fall back to a
-    // generic name when the chip is off-bus (e.g. inside C64IOSpace).
-    auto addFixed = [&](const char* fallback, IBusDevice* dev) {
-        if (!dev->hasPanel() || !seen.insert(dev).second) return;
-        for (const auto& e : bus_.devices())
-            if (e.device == dev) { result.push_back({ e.label, dev }); return; }
-        result.push_back({ fallback, dev });
-    };
-    addFixed("VIC-IIe",  &vic_);
-    addFixed("SID 6581", &sid_);
-    addFixed("CIA1",     &cia1_);
-    addFixed("CIA2",     &cia2_);
-
-    // Dynamic devices added via the Machine Designer.
-    for (const auto& e : bus_.devices())
-        if (e.device && e.device->hasPanel() && seen.insert(e.device).second)
+    // Collect every bus entry that has a panel — no deduplication so that the
+    // same chip mapped at two addresses produces two independently-labelled
+    // entries (both open the same panel, but the menu is self-describing).
+    for (const auto& e : bus_.devices()) {
+        if (e.device && e.device->hasPanel()) {
             result.push_back({ e.label, e.device });
+            onBus.insert(e.device);
+        }
+    }
+
+    // Fixed chips that are NOT on the bus (e.g. inside C64IOSpace in preset
+    // mode) still need panel entries; append them with generic names.
+    for (auto [fallback, dev] : std::initializer_list<std::pair<const char*, IBusDevice*>>{
+            {"VIC-IIe",  &vic_},
+            {"SID 6581", &sid_},
+            {"CIA1",     &cia1_},
+            {"CIA2",     &cia2_},
+        }) {
+        if (dev->hasPanel() && !onBus.count(dev))
+            result.push_back({ fallback, dev });
+    }
 
     return result;
 }
