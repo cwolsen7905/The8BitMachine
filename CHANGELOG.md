@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.14.0] - 2026-04-16
+
+### Added
+- **CIA1 keyboard matrix input** — SDL key events are translated to CIA1 column/row coordinates and forwarded to `CIA6526::setKey()`; 6502 programs can scan the matrix via PRA (column select) and PRB (row read) exactly as on real hardware
+- **Keyboard capture focus model** — click the Screen panel to capture keyboard input; Escape releases capture; a green border overlay and "KEYBOARD ACTIVE" label indicate active capture
+- **`roms/keyboard_test.s`** — CIA1 keyboard scanner ROM; scans all 8 columns using active-low column masks, edge-detects newly pressed keys with a PREV table in zero page, and prints `CcRr` + newline to the terminal for each key press
+
+### Changed
+- `CIA6526` keyboard matrix (`keyMatrix_[8]`) added — active-low 8×8 grid; `setKey(col, row, pressed)` sets/clears individual bits; `read(REG_PRB)` ANDs all selected column bytes for correct multi-key scanning
+- `CIA6526::reset()` now clears `keyMatrix_` to `0xFF` (all keys released)
+
+---
+
 ## [0.13.0] - 2026-04-16
 
 ### Added

@@ -10,7 +10,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ---
 
-## Current State  (v0.11)
+## Current State  (v0.14)
 
 ### Machine Designer
 - **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and an optional `statusLine()` for the designer panel
@@ -48,6 +48,7 @@ WDC 65C02 additions:
 - **Memory Viewer panel** (Debug menu) — full hex editor (imgui_memory_editor); click any byte to edit in-place, Follow PC toggle, PC highlighted in yellow, built-in data preview and column options
 - **Machine Designer panel** (View menu) — address map table with device names, ranges, and live status lines
 - **ROM loading** (File → Load ROM) — native macOS file dialog; supports raw `.bin` and Commodore `.prg`; resets CPU and jumps disassembler to load address
+- **Keyboard capture** — click the Screen panel to direct keyboard input into the CIA1 matrix; green border overlay and status label indicate active capture; Escape releases
 - **Machine config save / load** (File → Save / Load Machine Config) — persists the address-space wiring as a JSON file so machines can be recalled and shared
 
 ### Emulator core
@@ -60,8 +61,9 @@ WDC 65C02 additions:
 
 ### ROM development
 - `roms/test.s` — CIA1 Timer A interrupt demo: patches the IRQ vector at runtime, programs CIA1 Timer A to fire ~5× per second (at 60 kHz debug speed), then spins in a loop while the IRQ handler writes `*` + newline to the terminal on every timer tick
+- `roms/keyboard_test.s` — CIA1 keyboard matrix scanner: scans all 8 columns each frame using active-low column masks, edge-detects newly pressed keys with a PREV table in zero page, prints `CcRr` + newline per key press to the terminal
 - `build.sh` assembles all `roms/*.s` files via ca65/ld65 before building the C++ emulator
-- Load via **File → Load ROM → `roms/test.prg`**, press **F5** — `CIA1 TIMER` appears once, then `*` lines stream in driven purely by CIA1 IRQs
+- Load via **File → Load ROM → `roms/keyboard_test.prg`**, press **F5**, click the Screen panel (green border appears), then type — each key press appears immediately in the Terminal
 
 ---
 
@@ -201,7 +203,7 @@ Device instances are owned by `Machine`.  The default map is:
 - [x] **Second CPU (WDC 65C02)** — selectable at runtime via Machine Designer; 27 CMOS opcode patches, JMP indirect bug fixed
 - [x] **VIC-IIe** (`$D000–$D3FF`) — register file, raster IRQ, border + background colour, 40×25 character mode with embedded open font
 - [ ] SID audio stub (MOS 6581/8580)
-- [ ] Keyboard input via CIA1 matrix
+- [x] **Keyboard input via CIA1 matrix** — SDL keys routed to CIA1 `setKey(col, row)`; capture focus model with visual indicator
 - [ ] Proper ROM regions and bank switching
 
 ---
