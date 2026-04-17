@@ -89,6 +89,15 @@ private:
     char        designerBankCount_[4]{};
     std::string designerBankMsg_;
 
+    // Switchable Region
+    char        designerSRStart_[5]{};
+    char        designerSREnd_[5]{};
+    std::string designerSRMsg_;
+
+    // Bank Controller
+    char        designerBCAddr_[5]{};
+    std::string designerBCMsg_;
+
     // Inline address editing
     int         designerEditRow_    = -1;
     int         designerEditCol_    = -1;  // 0=start, 1=end

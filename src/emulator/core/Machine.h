@@ -4,8 +4,10 @@
 #include "emulator/core/ICPU.h"
 #include "emulator/devices/CIA6526.h"
 #include "emulator/devices/BankedMemory.h"
+#include "emulator/devices/BankController.h"
 #include "emulator/devices/BankSelectPort.h"
 #include "emulator/devices/ROM.h"
+#include "emulator/devices/SwitchableRegion.h"
 #include "emulator/devices/SID6581.h"
 #include "emulator/devices/VIC6566.h"
 #include "emulator/cpu/CPU8502.h"
@@ -98,6 +100,26 @@ public:
     // Returns the BankedMemory pointer, or nullptr if the range is degenerate.
     BankedMemory* mountBankedMemory(uint16_t primaryStart, uint16_t primaryEnd,
                                     uint16_t bankSelectAddr, uint8_t numBanks);
+
+    // Advanced bank switching ------------------------------------------------
+
+    // Create a SwitchableRegion proxy at the given address range.
+    // Use addRegionOption() to register child devices, then wire to a
+    // BankController or call select() directly.
+    SwitchableRegion* mountSwitchableRegion(uint16_t start, uint16_t end,
+                                            const std::string& label);
+
+    // Add a child device option to an existing SwitchableRegion.
+    // dev may be any IBusDevice* already owned by the Machine, or nullptr (open bus).
+    void addRegionOption(SwitchableRegion* region, IBusDevice* dev,
+                         const std::string& optionLabel);
+
+    // Create a BankController I/O byte at addr.
+    BankController* mountBankController(uint16_t addr, const std::string& label);
+
+    // Register a mapping: when ctrl receives value, call region->select(bankIndex).
+    void addControllerMapping(BankController* ctrl, uint8_t value,
+                              SwitchableRegion* region, uint8_t bankIndex);
 
     // Look up a device pointer by its config ID ("vic", "sid", "cia1", etc.)
     // Returns nullptr for "char_out" and unknown IDs.

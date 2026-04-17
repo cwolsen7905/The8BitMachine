@@ -85,7 +85,9 @@ set(SOURCES
     src/emulator/cpu/CPU65C02.cpp
     src/emulator/cpu/Disassembler.cpp
     src/emulator/devices/BankedMemory.cpp
+    src/emulator/devices/BankController.cpp
     src/emulator/devices/BankSelectPort.cpp
+    src/emulator/devices/SwitchableRegion.cpp
     src/emulator/devices/CIA6526.cpp
     src/emulator/devices/Memory.cpp
     src/emulator/devices/ROM.cpp

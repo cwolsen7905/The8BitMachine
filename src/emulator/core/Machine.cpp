@@ -65,6 +65,33 @@ BankedMemory* Machine::mountBankedMemory(uint16_t primaryStart, uint16_t primary
     return memPtr;
 }
 
+SwitchableRegion* Machine::mountSwitchableRegion(uint16_t start, uint16_t end,
+                                                  const std::string& label) {
+    auto reg = std::make_unique<SwitchableRegion>(label);
+    SwitchableRegion* ptr = reg.get();
+    dynamicDevices_.push_back(std::move(reg));
+    bus_.addDevice(start, end, ptr, label);
+    return ptr;
+}
+
+void Machine::addRegionOption(SwitchableRegion* region, IBusDevice* dev,
+                               const std::string& optionLabel) {
+    region->addOption(dev, optionLabel);
+}
+
+BankController* Machine::mountBankController(uint16_t addr, const std::string& label) {
+    auto ctrl = std::make_unique<BankController>(label);
+    BankController* ptr = ctrl.get();
+    dynamicDevices_.push_back(std::move(ctrl));
+    bus_.addDevice(addr, addr, ptr, label);
+    return ptr;
+}
+
+void Machine::addControllerMapping(BankController* ctrl, uint8_t value,
+                                    SwitchableRegion* region, uint8_t bankIndex) {
+    ctrl->addMapping(value, region, bankIndex);
+}
+
 void Machine::unmountAt(size_t busIndex) {
     if (busIndex >= bus_.devices().size()) return;
     IBusDevice* dev = bus_.devices()[busIndex].device;
@@ -123,9 +150,11 @@ const char* Machine::idForDevice(const IBusDevice* dev) const {
     if (dev == nullptr) return "char_out";
     for (const auto& d : dynamicDevices_) {
         if (d.get() != dev) continue;
-        if (dynamic_cast<const ROM*>(dev))            return "rom";
-        if (dynamic_cast<const BankedMemory*>(dev))   return "banked_ram";
-        if (dynamic_cast<const BankSelectPort*>(dev)) return "bank_select";
+        if (dynamic_cast<const ROM*>(dev))              return "rom";
+        if (dynamic_cast<const BankedMemory*>(dev))    return "banked_ram";
+        if (dynamic_cast<const BankSelectPort*>(dev))  return "bank_select";
+        if (dynamic_cast<const SwitchableRegion*>(dev)) return "switchable_region";
+        if (dynamic_cast<const BankController*>(dev))  return "bank_controller";
     }
     return "unknown";
 }

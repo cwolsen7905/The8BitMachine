@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.20.0] - 2026-04-17
+
+### Added
+- **SwitchableRegion device** (`src/emulator/devices/SwitchableRegion`) — proxy `IBusDevice` that forwards reads/writes to one of N registered child devices; `select(n)` swaps the active child at runtime; options can be any device type (RAM, ROM, I/O, open bus); `statusLine()` shows current bank and option label
+- **BankController device** (`src/emulator/devices/BankController`) — 1-byte I/O register; `addMapping(value, region, bankIndex)` registers actions that fire when a value is written; a single write can switch multiple `SwitchableRegion`s simultaneously (e.g. C64 `$01` port); optional `onWrite` callback for machine-specific logic; `statusLine()` shows current value, region count, and mapping count
+- **Machine Designer → Add Switchable Region** — Start/End address fields; "Add Switchable Region" button creates an empty proxy; tooltip explains wiring via config/preset; bank-selector dropdown appears live in the Status column for any `SwitchableRegion` on the bus
+- **Machine Designer → Add Bank Controller** — Address field; "Add Bank Controller" button mounts the controller; tooltip explains mapping via config/preset
+- `Machine::mountSwitchableRegion(start, end, label)` — creates and maps a `SwitchableRegion`
+- `Machine::addRegionOption(region, dev, label)` — appends a child device option to a region
+- `Machine::mountBankController(addr, label)` — creates and maps a `BankController`
+- `Machine::addControllerMapping(ctrl, value, region, bankIndex)` — wires one mapping entry
+
+---
+
 ## [0.19.0] - 2026-04-17
 
 ### Added

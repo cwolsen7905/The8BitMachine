@@ -884,12 +884,28 @@ void Application::drawMachineDesigner() {
             ImGui::TableSetColumnIndex(3);
             ImGui::TextUnformatted(e.label.c_str());
 
-            // ---- col 4: status ----
+            // ---- col 4: status / bank selector ----
             ImGui::TableSetColumnIndex(4);
-            if (e.device)
+            auto* sr = dynamic_cast<SwitchableRegion*>(e.device);
+            if (sr && sr->optionCount() > 0) {
+                ImGui::SetNextItemWidth(-1.0f);
+                char comboId[16];
+                std::snprintf(comboId, sizeof(comboId), "##sr%d", i);
+                const char* activeLabel = sr->activeOption().label.c_str();
+                if (ImGui::BeginCombo(comboId, activeLabel)) {
+                    for (size_t k = 0; k < sr->optionCount(); ++k) {
+                        const bool sel = (k == sr->selectedIndex());
+                        if (ImGui::Selectable(sr->options()[k].label.c_str(), sel))
+                            sr->select(static_cast<uint8_t>(k));
+                        if (sel) ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
+                }
+            } else if (e.device) {
                 ImGui::TextDisabled("%s", e.device->statusLine().c_str());
-            else
+            } else {
                 ImGui::TextDisabled("—");
+            }
 
             // ---- col 5: remove ----
             ImGui::TableSetColumnIndex(5);
@@ -1113,6 +1129,107 @@ void Application::drawMachineDesigner() {
             ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", designerBankMsg_.c_str());
         else
             ImGui::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s", designerBankMsg_.c_str());
+    }
+
+    // ---- Add Switchable Region ----
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "Add Switchable Region");
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip(
+            "A proxy device that forwards reads/writes to one of N child devices.\n"
+            "After adding, wire options via JSON config or a machine preset.\n"
+            "The Status column shows a live bank-selector dropdown.");
+    ImGui::Spacing();
+
+    if (designerSRStart_[0] == '\0') std::strncpy(designerSRStart_, "A000", 5);
+    if (designerSREnd_[0]   == '\0') std::strncpy(designerSREnd_,   "BFFF", 5);
+
+    ImGui::TextUnformatted("Start:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(54.0f);
+    ImGui::InputText("##srs", designerSRStart_, 5,
+        ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
+    ImGui::SameLine();
+    ImGui::TextUnformatted("End:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(54.0f);
+    ImGui::InputText("##sre", designerSREnd_, 5,
+        ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
+
+    ImGui::Spacing();
+    if (ImGui::Button("Add Switchable Region")) {
+        char* ep = nullptr;
+        unsigned long s = std::strtoul(designerSRStart_, &ep, 16);
+        unsigned long e2 = std::strtoul(designerSREnd_,  &ep, 16);
+        if (s > 0xFFFF || e2 > 0xFFFF || e2 < s) {
+            designerSRMsg_ = "Invalid range";
+        } else {
+            char label[32];
+            std::snprintf(label, sizeof(label), "SwitchableRegion $%04lX-$%04lX", s, e2);
+            machine_.mountSwitchableRegion(
+                static_cast<uint16_t>(s), static_cast<uint16_t>(e2), label);
+            char msg[48];
+            std::snprintf(msg, sizeof(msg), "Added at $%04lX-$%04lX", s, e2);
+            designerSRMsg_ = msg;
+        }
+    }
+
+    if (!designerSRMsg_.empty()) {
+        ImGui::SameLine();
+        const bool isErr = designerSRMsg_.rfind("Invalid", 0) == 0;
+        if (isErr)
+            ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", designerSRMsg_.c_str());
+        else
+            ImGui::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s", designerSRMsg_.c_str());
+    }
+
+    // ---- Add Bank Controller ----
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "Add Bank Controller");
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip(
+            "A 1-byte I/O register.  Writing a value triggers bank switches\n"
+            "on connected SwitchableRegions per the mapping table.\n"
+            "Wire mappings via JSON config or a machine preset.");
+    ImGui::Spacing();
+
+    if (designerBCAddr_[0] == '\0') std::strncpy(designerBCAddr_, "0001", 5);
+
+    ImGui::TextUnformatted("Address:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(54.0f);
+    ImGui::InputText("##bca", designerBCAddr_, 5,
+        ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
+
+    ImGui::Spacing();
+    if (ImGui::Button("Add Bank Controller")) {
+        char* ep = nullptr;
+        unsigned long a = std::strtoul(designerBCAddr_, &ep, 16);
+        if (ep == designerBCAddr_ || a > 0xFFFF) {
+            designerBCMsg_ = "Invalid address";
+        } else {
+            char label[32];
+            std::snprintf(label, sizeof(label), "BankController $%04lX", a);
+            machine_.mountBankController(static_cast<uint16_t>(a), label);
+            char msg[40];
+            std::snprintf(msg, sizeof(msg), "Added at $%04lX", a);
+            designerBCMsg_ = msg;
+        }
+    }
+
+    if (!designerBCMsg_.empty()) {
+        ImGui::SameLine();
+        const bool isErr = designerBCMsg_.rfind("Invalid", 0) == 0;
+        if (isErr)
+            ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", designerBCMsg_.c_str());
+        else
+            ImGui::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s", designerBCMsg_.c_str());
     }
 
     ImGui::End();
