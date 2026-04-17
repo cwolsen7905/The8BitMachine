@@ -8,8 +8,11 @@ CPU6510::CPU6510() {
 void CPU6510::reset() {
     ioDir_  = 0x2F;
     ioData_ = 0x37;
-    CPU6502Base::reset();
+    // Fire banking callback BEFORE reading the reset vector so that
+    // SwitchableRegions (e.g. KERNAL at $E000) are in the correct state
+    // when CPU6502Base::reset() reads $FFFC/$FFFD.
     if (onIOWrite) onIOWrite(ioData_, ioDir_);
+    CPU6502Base::reset();
 }
 
 uint8_t CPU6510::busRead(uint16_t addr) {

@@ -25,16 +25,20 @@ MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
     bus_.clearDevices();
     dynamicDevices_.clear();
 
-    // --- ROMs ---
-    ROM* kernal = mountROM(0xE000, 0xFFFF, "KERNAL $E000-$FFFF", kernalPath);
+    // --- Load ROMs into dynamicDevices_ WITHOUT adding to bus.
+    // They must only be reachable through SwitchableRegions, which are
+    // registered first.  If the ROMs were direct bus entries they would shadow
+    // the SwitchableRegions (bus is first-match) and C64IOSpace would be
+    // unreachable, breaking all VIC/SID/CIA register access.
+    ROM* kernal = loadROM("KERNAL $E000-$FFFF", kernalPath);
     if (!kernal)
         return { false, "Cannot load kernal ROM: " + kernalPath };
 
-    ROM* basic = mountROM(0xA000, 0xBFFF, "BASIC $A000-$BFFF", basicPath);
+    ROM* basic = loadROM("BASIC $A000-$BFFF", basicPath);
     if (!basic)
         return { false, "Cannot load BASIC ROM: " + basicPath };
 
-    ROM* charRom = mountROM(0xD000, 0xDFFF, "CHAR $D000-$DFFF", charPath);
+    ROM* charRom = loadROM("CHAR $D000-$DFFF", charPath);
     if (!charRom)
         return { false, "Cannot load char ROM: " + charPath };
 
@@ -43,7 +47,7 @@ MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
     C64IOSpace* ioPtr = ioSpace.get();
     dynamicDevices_.push_back(std::move(ioSpace));
 
-    // --- Three switchable regions ---
+    // --- Three switchable regions — registered on bus BEFORE catch-all RAM ---
     // $A000–$BFFF: option 0=RAM, 1=BASIC ROM
     SwitchableRegion* regionA = mountSwitchableRegion(
         0xA000, 0xBFFF, "BASIC/RAM $A000-$BFFF");
@@ -126,6 +130,14 @@ ROM* Machine::mountROM(uint16_t start, uint16_t end,
     return ptr;
 }
 
+ROM* Machine::loadROM(const std::string& label, const std::string& filePath) {
+    auto rom = std::make_unique<ROM>(label);
+    if (!rom->loadFromFile(filePath)) return nullptr;
+    ROM* ptr = rom.get();
+    dynamicDevices_.push_back(std::move(rom));
+    return ptr;  // intentionally NOT added to bus
+}
+
 BankedMemory* Machine::mountBankedMemory(uint16_t primaryStart, uint16_t primaryEnd,
                                           uint16_t bankSelectAddr, uint8_t numBanks) {
     if (primaryEnd < primaryStart) return nullptr;
@@ -195,7 +207,11 @@ void Machine::unmountAt(size_t busIndex) {
 }
 
 void Machine::reset() {
-    bus_.reset();   // resets RAM + CIA1 + CIA2 (skips nullptr sentinel)
+    vic_.reset();
+    sid_.reset();
+    cia1_.reset();
+    cia2_.reset();
+    bus_.reset();   // resets RAM and any dynamic devices
     activeCpu_->reset();
 }
 

@@ -64,6 +64,19 @@ private:
     bool showDisasm_   = true;
     bool showMemView_  = false;
     bool showDesigner_ = false;
+    bool showKeyDebug_ = false;
+
+    // -----------------------------------------------------------------------
+    // Keyboard debug state
+    // -----------------------------------------------------------------------
+    std::string lastKeyName_;
+    int         lastKeyCol_ = -1;
+    int         lastKeyRow_ = -1;
+    std::unordered_set<int> pressedMatrixKeys_;   // encoded as col*8+row
+
+    // When true, col and row are swapped before calling setKey — required for
+    // MEGA65 OpenROMs which wire PA=rows/PB=cols (opposite of stock C64 KERNAL).
+    bool keyMatrixTranspose_ = true;
 
     // -----------------------------------------------------------------------
     // Disassembler
@@ -150,4 +163,5 @@ private:
     void saveMachineConfigDialog();
     void loadMachineConfigDialog();
     void drawC64PresetDialog();
+    void drawKeyboardDebug();
 };

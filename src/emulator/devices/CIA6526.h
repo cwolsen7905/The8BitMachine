@@ -61,6 +61,12 @@ public:
     // -----------------------------------------------------------------------
     void setKey(int col, int row, bool pressed);
 
+    // Port/DDR snapshots for debug panels (non-destructive reads)
+    uint8_t portA() const { return pra_; }
+    uint8_t portB() const { return prb_; }
+    uint8_t ddrA()  const { return ddra_; }
+    uint8_t ddrB()  const { return ddrb_; }
+
     // -----------------------------------------------------------------------
     // Register offsets
     // -----------------------------------------------------------------------

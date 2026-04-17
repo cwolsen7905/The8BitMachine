@@ -202,14 +202,21 @@ void Application::processEvents() {
             const SDL_Keycode sym     = e.key.keysym.sym;
             const bool        pressed = (e.type == SDL_KEYDOWN);
 
-            // Emulator hotkeys always fire regardless of capture state
+            // F5/F6 are also C64 keyboard keys — only fire emulator action
+            // when keyboard is NOT captured so they aren't consumed twice.
+            if (pressed && !keyboardCaptured_) {
+                switch (sym) {
+                    case SDLK_F5: emulatorRunning_ = true;  termPrint("[Emulator] Running..."); break;
+                    case SDLK_F6: emulatorRunning_ = false; termPrint("[Emulator] Paused.");
+                                  termPrint(machine_.cpu().stateString());                      break;
+                    default: break;
+                }
+            }
+            // F8 / F10 are not C64 keys — always available
             if (pressed) {
                 switch (sym) {
-                    case SDLK_F5:  emulatorRunning_ = true;  termPrint("[Emulator] Running..."); break;
-                    case SDLK_F6:  emulatorRunning_ = false; termPrint("[Emulator] Paused.");
-                                   termPrint(machine_.cpu().stateString());                       break;
-                    case SDLK_F8:  emulatorReset();                                               break;
-                    case SDLK_F10: emulatorStep();                                                break;
+                    case SDLK_F8:  emulatorReset();  break;
+                    case SDLK_F10: emulatorStep();   break;
                     default: break;
                 }
             }
@@ -219,27 +226,30 @@ void Application::processEvents() {
                 if (sym == SDLK_ESCAPE) {
                     if (pressed) keyboardCaptured_ = false;
                 } else {
-                    // C64 matrix: (col, row) — active-low, PA selects col, PB reads row
+                    // C64 keyboard matrix — PA bit = col, PB bit = row (active-low).
+                    // Reference: https://www.c64-wiki.com/wiki/Keyboard
                     int col = -1, row = -1;
                     switch (sym) {
-                        // Col 0
-                        case SDLK_RETURN:    col=0; row=0; break;
+                        // Standard C64 matrix: col = PA bit, row = PB bit.
+                        // keyMatrixTranspose_ swaps these before CIA delivery for MEGA65 ROMs.
+                        case SDLK_DELETE:
+                        case SDLK_BACKSPACE: col=0; row=0; break;  // DEL
                         case SDLK_3:         col=0; row=1; break;
                         case SDLK_5:         col=0; row=2; break;
                         case SDLK_7:         col=0; row=3; break;
                         case SDLK_9:         col=0; row=4; break;
-                        case SDLK_KP_PLUS:   col=0; row=5; break;
+                        case SDLK_KP_PLUS:   col=0; row=5; break;  // +
+                        // row 6 = £ — no standard PC key
                         case SDLK_1:         col=0; row=7; break;
-                        // Col 1
-                        case SDLK_RIGHT:     col=1; row=0; break;
+                        case SDLK_RETURN:    col=1; row=0; break;
                         case SDLK_w:         col=1; row=1; break;
                         case SDLK_r:         col=1; row=2; break;
                         case SDLK_y:         col=1; row=3; break;
                         case SDLK_i:         col=1; row=4; break;
                         case SDLK_p:         col=1; row=5; break;
-                        case SDLK_KP_MULTIPLY: col=1; row=6; break;
-                        // Col 2
-                        case SDLK_DOWN:      col=2; row=0; break;
+                        case SDLK_KP_MULTIPLY: col=1; row=6; break;  // *
+                        case SDLK_BACKQUOTE: col=1; row=7; break;  // ←
+                        case SDLK_DOWN:      col=2; row=0; break;  // CUR↓
                         case SDLK_a:         col=2; row=1; break;
                         case SDLK_d:         col=2; row=2; break;
                         case SDLK_g:         col=2; row=3; break;
@@ -247,7 +257,6 @@ void Application::processEvents() {
                         case SDLK_l:         col=2; row=5; break;
                         case SDLK_SEMICOLON: col=2; row=6; break;
                         case SDLK_LCTRL:     col=2; row=7; break;
-                        // Col 3
                         case SDLK_F7:        col=3; row=0; break;
                         case SDLK_4:         col=3; row=1; break;
                         case SDLK_6:         col=3; row=2; break;
@@ -256,43 +265,58 @@ void Application::processEvents() {
                         case SDLK_MINUS:     col=3; row=5; break;
                         case SDLK_HOME:      col=3; row=6; break;
                         case SDLK_2:         col=3; row=7; break;
-                        // Col 4
                         case SDLK_F1:        col=4; row=0; break;
                         case SDLK_z:         col=4; row=1; break;
                         case SDLK_c:         col=4; row=2; break;
                         case SDLK_b:         col=4; row=3; break;
                         case SDLK_m:         col=4; row=4; break;
                         case SDLK_PERIOD:    col=4; row=5; break;
-                        case SDLK_RSHIFT:    col=4; row=6; break;
+                        // row 6 = ^ — no standard PC key
                         case SDLK_SPACE:     col=4; row=7; break;
-                        // Col 5
                         case SDLK_F3:        col=5; row=0; break;
                         case SDLK_s:         col=5; row=1; break;
                         case SDLK_f:         col=5; row=2; break;
                         case SDLK_h:         col=5; row=3; break;
                         case SDLK_k:         col=5; row=4; break;
-                        case SDLK_EQUALS:    col=5; row=6; break;
+                        // row 5 = : — skip (needs shift+semicolon)
+                        case SDLK_EQUALS:    col=5; row=6; break;  // =
                         case SDLK_LALT:      col=5; row=7; break;  // Commodore key
-                        // Col 6
                         case SDLK_F5:        col=6; row=0; break;
                         case SDLK_e:         col=6; row=1; break;
                         case SDLK_t:         col=6; row=2; break;
                         case SDLK_u:         col=6; row=3; break;
                         case SDLK_o:         col=6; row=4; break;
+                        // row 5 = @, row 6 = ↑ — no standard PC keys
                         case SDLK_q:         col=6; row=7; break;
-                        // Col 7
-                        case SDLK_DELETE:
-                        case SDLK_BACKSPACE: col=7; row=0; break;
+                        case SDLK_RIGHT:     col=7; row=0; break;  // CUR→
                         case SDLK_LSHIFT:    col=7; row=1; break;
+                        case SDLK_RSHIFT:    col=7; row=1; break;
                         case SDLK_x:         col=7; row=2; break;
                         case SDLK_v:         col=7; row=3; break;
                         case SDLK_n:         col=7; row=4; break;
                         case SDLK_COMMA:     col=7; row=5; break;
                         case SDLK_SLASH:     col=7; row=6; break;
+                        // row 7 = RUN/STOP — ESCAPE releases capture, skip
                         default: break;
                     }
-                    if (col >= 0)
-                        machine_.cia1().setKey(col, row, pressed);
+                    if (col >= 0) {
+                        int ciaCol = col, ciaRow = row;
+                        if (keyMatrixTranspose_) std::swap(ciaCol, ciaRow);
+                        machine_.cia1().setKey(ciaCol, ciaRow, pressed);
+                        const int encoded = col * 8 + row;
+                        if (pressed) {
+                            lastKeyName_ = SDL_GetKeyName(sym);
+                            lastKeyCol_  = col;
+                            lastKeyRow_  = row;
+                            pressedMatrixKeys_.insert(encoded);
+                        } else {
+                            pressedMatrixKeys_.erase(encoded);
+                        }
+                    } else if (pressed) {
+                        lastKeyName_ = SDL_GetKeyName(sym);
+                        lastKeyCol_  = -1;
+                        lastKeyRow_  = -1;
+                    }
                 }
             }
         }
@@ -334,6 +358,7 @@ void Application::render() {
     if (showMemView_)  drawMemoryViewer();
     if (showDesigner_) drawMachineDesigner();
     if (showC64Preset_) drawC64PresetDialog();
+    if (showKeyDebug_) drawKeyboardDebug();
 
     // Per-device panels — one window per unique device that opted in
     {
@@ -422,9 +447,14 @@ void Application::drawMenuBar() {
 
     // View ----------------------------------------------------------------
     if (ImGui::BeginMenu("View")) {
-        ImGui::MenuItem("Screen",           nullptr, &showScreen_);
-        ImGui::MenuItem("Terminal",         nullptr, &showTerminal_);
-        ImGui::MenuItem("CPU State",        nullptr, &showCpuState_);
+        ImGui::MenuItem("Screen",      nullptr, &showScreen_);
+        ImGui::MenuItem("Terminal",    nullptr, &showTerminal_);
+        ImGui::MenuItem("CPU State",   nullptr, &showCpuState_);
+        ImGui::EndMenu();
+    }
+
+    // Machine -------------------------------------------------------------
+    if (ImGui::BeginMenu("Machine")) {
         ImGui::MenuItem("Machine Designer", nullptr, &showDesigner_);
 
         // Dynamic device panels — one entry per unique device with hasPanel()
@@ -443,8 +473,9 @@ void Application::drawMenuBar() {
 
     // Debug ---------------------------------------------------------------
     if (ImGui::BeginMenu("Debug")) {
-        ImGui::MenuItem("Disassembler",  nullptr, &showDisasm_);
-        ImGui::MenuItem("Memory Viewer", nullptr, &showMemView_);
+        ImGui::MenuItem("Disassembler",    nullptr, &showDisasm_);
+        ImGui::MenuItem("Memory Viewer",   nullptr, &showMemView_);
+        ImGui::MenuItem("Keyboard Matrix", nullptr, &showKeyDebug_);
         ImGui::EndMenu();
     }
 
@@ -1255,6 +1286,123 @@ void Application::drawMachineDesigner() {
 }
 
 // ---------------------------------------------------------------------------
+// Keyboard matrix debug panel
+// ---------------------------------------------------------------------------
+
+void Application::drawKeyboardDebug() {
+    // C64 keyboard matrix reference — [col][row]
+    // Standard C64 matrix labels: kLabel[col][row], col=PA bit, row=PB bit.
+    static const char* kLabel[8][8] = {
+      //  row0      row1    row2    row3    row4    row5    row6    row7
+        {"DEL",    "3",    "5",    "7",    "9",    "+",    "\xC2\xA3", "1"   }, // col0
+        {"RETURN", "W",    "R",    "Y",    "I",    "P",    "*",    "\xE2\x86\x90"}, // col1
+        {"CUR\xE2\x86\x93", "A", "D", "G", "J",   "L",    ";",    "CTRL"}, // col2
+        {"F7",     "4",    "6",    "8",    "0",    "-",    "HOME", "2"   }, // col3
+        {"F1",     "Z",    "C",    "B",    "M",    ".",    "^",    "SPACE"}, // col4
+        {"F3",     "S",    "F",    "H",    "K",    ":",    "=",    "CBM" }, // col5
+        {"F5",     "E",    "T",    "U",    "O",    "@",    "\xE2\x86\x91", "Q"}, // col6
+        {"CUR\xE2\x86\x92", "LSHF", "X", "V",    "N",    ",",    "/",    "STOP"}, // col7
+    };
+
+    ImGui::SetNextWindowSize({ 620.0f, 340.0f }, ImGuiCond_FirstUseEver);
+    ImGui::Begin("Keyboard Matrix", &showKeyDebug_);
+
+    // Matrix mode toggle
+    {
+        bool standard = !keyMatrixTranspose_;
+        if (ImGui::RadioButton("Standard C64 KERNAL", standard))
+            keyMatrixTranspose_ = false;
+        ImGui::SameLine();
+        if (ImGui::RadioButton("MEGA65 OpenROMs", !standard))
+            keyMatrixTranspose_ = true;
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("MEGA65 OpenROMs wire PA=rows/PB=cols (transposed vs stock C64).\n"
+                              "Switch to Standard C64 KERNAL when using original C64 ROMs.");
+    }
+
+    // Last key info
+    if (lastKeyCol_ >= 0)
+        ImGui::Text("Last: %-18s  col %d, row %d  (%s)",
+            lastKeyName_.c_str(), lastKeyCol_, lastKeyRow_,
+            kLabel[lastKeyCol_][lastKeyRow_]);
+    else if (!lastKeyName_.empty())
+        ImGui::Text("Last: %-18s  (not mapped)", lastKeyName_.c_str());
+    else
+        ImGui::TextDisabled("Press a key or click a cell to inject a keypress.");
+
+    ImGui::Spacing();
+    ImGui::TextDisabled("Green = held.  Click cell to inject.  Capture keyboard via Screen panel.");
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    // Column headers
+    ImGui::TextDisabled("     ");
+    for (int c = 0; c < 8; ++c) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("  Col%-2d  ", c);
+    }
+
+    // Matrix grid — buttons are clickable: mouse-hold injects a key press,
+    // mouse-release injects the corresponding key release.
+    const ImVec2 cellSz{ 62.0f, 20.0f };
+    for (int row = 0; row < 8; ++row) {
+        ImGui::TextDisabled("Row%d ", row);
+        for (int col = 0; col < 8; ++col) {
+            ImGui::SameLine();
+            const bool held = pressedMatrixKeys_.count(col * 8 + row) > 0;
+            const bool isLast = (lastKeyCol_ == col && lastKeyRow_ == row);
+
+            ImVec4 bg  = held    ? ImVec4(0.1f, 0.7f, 0.2f, 0.6f)
+                       : isLast  ? ImVec4(0.2f, 0.4f, 0.8f, 0.4f)
+                                 : ImVec4(0.15f, 0.15f, 0.15f, 1.0f);
+            ImVec4 fg  = (held || isLast) ? ImVec4(1,1,1,1)
+                                          : ImVec4(0.6f, 0.6f, 0.6f, 1.0f);
+
+            ImGui::PushStyleColor(ImGuiCol_Button,        bg);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bg);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.1f, 0.7f, 0.2f, 0.8f));
+            ImGui::PushStyleColor(ImGuiCol_Text,          fg);
+            char id[16];
+            std::snprintf(id, sizeof(id), "##k%d%d", col, row);
+            ImGui::Button((std::string(kLabel[col][row]) + id).c_str(), cellSz);
+            ImGui::PopStyleColor(4);
+
+            // Mouse-down: press the key; mouse-up: release it
+            if (ImGui::IsItemActivated()) {
+                int ciaCol = col, ciaRow = row;
+                if (keyMatrixTranspose_) std::swap(ciaCol, ciaRow);
+                machine_.cia1().setKey(ciaCol, ciaRow, true);
+                pressedMatrixKeys_.insert(col * 8 + row);
+                lastKeyCol_  = col;
+                lastKeyRow_  = row;
+                lastKeyName_ = kLabel[col][row];
+            }
+            if (ImGui::IsItemDeactivated()) {
+                int ciaCol = col, ciaRow = row;
+                if (keyMatrixTranspose_) std::swap(ciaCol, ciaRow);
+                machine_.cia1().setKey(ciaCol, ciaRow, false);
+                pressedMatrixKeys_.erase(col * 8 + row);
+            }
+
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("col %d, row %d  =  %s\nClick to inject keypress",
+                                  col, row, kLabel[col][row]);
+        }
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    const auto& cia = machine_.cia1();
+    ImGui::Text("CIA1  PA=$%02X  PB=$%02X  DDRA=$%02X  DDRB=$%02X",
+        (unsigned)cia.portA(), (unsigned)cia.portB(),
+        (unsigned)cia.ddrA(),  (unsigned)cia.ddrB());
+
+    ImGui::End();
+}
+
+// ---------------------------------------------------------------------------
 // C64 preset dialog
 // ---------------------------------------------------------------------------
 
@@ -1299,6 +1447,19 @@ void Application::drawC64PresetDialog() {
     romRow("KERNAL",  c64KernalPath_);
     romRow("BASIC",   c64BasicPath_);
     romRow("CHAR",    c64CharPath_);
+
+    ImGui::Spacing();
+    ImGui::TextUnformatted("ROM target:");
+    ImGui::SameLine();
+    bool standard = !keyMatrixTranspose_;
+    if (ImGui::RadioButton("Standard C64 KERNAL", standard))  keyMatrixTranspose_ = false;
+    ImGui::SameLine();
+    if (ImGui::RadioButton("MEGA65 OpenROMs", !standard))      keyMatrixTranspose_ = true;
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Controls keyboard matrix wiring.\n"
+                          "MEGA65 OpenROMs use PA=rows/PB=cols (transposed vs stock C64).");
 
     ImGui::Spacing();
     ImGui::Separator();
