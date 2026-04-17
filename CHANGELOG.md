@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.17.0] - 2026-04-17
+
+### Changed
+- **Machine Designer panel** — fully interactive address-space editor replacing the previous read-only table
+  - **Add Device** — dropdown of all known devices (VIC, SID, CIA1, CIA2, RAM, CHAR_OUT) with editable hex address fields; defaults auto-fill on selection change
+  - **Remove** — per-row `×` button unmaps a device from the address space without destroying it
+  - **Inline address editing** — click any Start or End cell to edit in place; Enter or focus-loss commits, Escape cancels
+  - **Drag-to-reorder** — drag the `=` handle to change bus priority order; row highlights on hover during drag
+  - **Sort by Address** — sorts entries by start address (stable sort preserving relative order of equal entries)
+  - **Reset to Defaults** — clears the bus and rebuilds the standard default map
+  - **Validation warnings** — red row tint for invalid ranges (Start > End), orange row tint for unreachable entries fully shadowed by a higher-priority entry, yellow text warning when no catch-all `$0000–$FFFF` entry is present; tooltip on drag handle explains the issue
+- `Bus` — added `removeAt(index)`, `modifyAt(index, start, end)`, `moveEntry(from, to)`, `sortByAddress()`
+- `Machine` — added `resetAddressMap()`, made `deviceForId()` / `idForDevice()` public for use by the designer panel
+
+---
+
+## [0.16.1] - 2026-04-17
+
+### Added
+- **SID filter routing** — Chamberlin state-variable filter (LP/BP/HP modes); `$D417` routes voices through the filter; `$D418` bits 4–6 select LP/BP/HP output mix; resonance applied as damping
+- **Ring modulation** — `RING` control bit XORs the triangle fold bit with the modulator oscillator MSB; voice N modulated by voice (N+2)%3
+- **Hard sync** — `SYNC` control bit resets target oscillator phase when source oscillator overflows; source routing matches real 6581 (`kSyncSrc[]`)
+- **OSC3 / ENV3 readback** — `$D41B` and `$D41C` return live voice 3 oscillator and envelope values via `std::atomic<uint8_t>`
+- **`roms/sid_playground.s`** — interactive SID synthesizer: keys QWERTYUI play notes C4–C5 on voice 1; VIC screen shows active key indicators and note name; border colour changes per note; loads at `$0800` to avoid screen RAM overlap
+- **`roms/sid_demo.s`** updated to three sections: plain sawtooth+triangle → LP filter sweep (cutoff rises each note) → hard sync (V3 pulse at 1.5× melody) + ring mod (V2 triangle modulated by V1)
+
+### Changed
+- SID phase accumulator corrected to 24-bit (`& 0xFFFFFF`); fixes clicks/pops and off-pitch notes introduced in 0.16.0
+- `generateSamples()` takes a register snapshot under mutex then synthesizes without holding the lock
+
+---
+
 ## [0.16.0] - 2026-04-16
 
 ### Added
