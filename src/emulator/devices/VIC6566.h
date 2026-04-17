@@ -51,6 +51,13 @@ public:
     void connectBus(Bus* b) { bus_ = b; }
 
     // -----------------------------------------------------------------------
+    // Colour RAM — 1 KB at $D800–$DBFF (CPU side, 4-bit per cell).
+    // C64IOSpace routes reads/writes here; VIC reads it during rendering.
+    // -----------------------------------------------------------------------
+    uint8_t readColorRam (uint16_t offset) const { return colorRAM_[offset & 0x3FF] | 0xF0; }
+    void    writeColorRam(uint16_t offset, uint8_t val) { colorRAM_[offset & 0x3FF] = val & 0x0F; }
+
+    // -----------------------------------------------------------------------
     // Framebuffer — Application polls this each frame to upload the texture.
     // -----------------------------------------------------------------------
     const uint8_t* framebuffer() const { return fb_.data(); }
@@ -88,6 +95,8 @@ private:
 
     mutable uint8_t reg_[64] = {};  // mutable: ISR and collision regs clear on read
     std::array<uint8_t, WIDTH * HEIGHT * 4> fb_ = {};
+
+    uint8_t colorRAM_[1024] = {};  // 4-bit per cell; initialized to 0 (black)
 
     Bus* bus_     = nullptr;
     int  rasterX_ = 0;

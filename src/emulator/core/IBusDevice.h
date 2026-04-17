@@ -31,4 +31,10 @@ public:
     // from the bus entry label so two CIAs get distinct window titles.
     virtual bool hasPanel() const { return false; }
     virtual void drawPanel(const char* title, bool* open) { (void)title; (void)open; }
+
+    // Sub-device address lookup — container devices (e.g. C64IOSpace) override
+    // this to report where a contained chip lives relative to their own base.
+    // Returns {-1,-1} when the device is not contained here.
+    struct SubRange { int start = -1; int end = -1; bool valid() const { return start >= 0; } };
+    virtual SubRange findSubDevice(const IBusDevice*) const { return {}; }
 };

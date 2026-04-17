@@ -28,6 +28,7 @@ struct MachineConfigResult {
     // Populated on load when a preset was restored; Application should apply these.
     bool        hasPreset          = false;
     bool        keyMatrixTranspose = true;
+    int         cyclesPerFrame     = 0;  // 0 = not stored in file (use caller's default)
 };
 
 // ---------------------------------------------------------------------------
@@ -86,7 +87,7 @@ public:
     // -----------------------------------------------------------------------
     // Config
     // -----------------------------------------------------------------------
-    MachineConfigResult saveConfig(const std::string& path) const;
+    MachineConfigResult saveConfig(const std::string& path, int cyclesPerFrame = 0) const;
     MachineConfigResult loadConfig(const std::string& path);
 
     void resetAddressMap();   // restore default device wiring

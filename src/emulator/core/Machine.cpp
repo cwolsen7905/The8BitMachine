@@ -262,21 +262,49 @@ std::vector<Machine::PanelEntry> Machine::panelDevices() {
     // entries (both open the same panel, but the menu is self-describing).
     for (const auto& e : bus_.devices()) {
         if (e.device && e.device->hasPanel()) {
-            result.push_back({ e.label, e.device });
+            char buf[64];
+            std::snprintf(buf, sizeof(buf), "%s $%04X-$%04X",
+                          e.device->deviceName(), e.start, e.end);
+            result.push_back({ buf, e.device });
             onBus.insert(e.device);
         }
     }
 
-    // Fixed chips that are NOT on the bus (e.g. inside C64IOSpace in preset
-    // mode) still need panel entries; append them with generic names.
-    for (auto [fallback, dev] : std::initializer_list<std::pair<const char*, IBusDevice*>>{
-            {"VIC-IIe",  &vic_},
-            {"SID 6581", &sid_},
-            {"CIA1",     &cia1_},
-            {"CIA2",     &cia2_},
-        }) {
+    // Fixed chips not directly on the bus (e.g. inside C64IOSpace inside a
+    // SwitchableRegion).  Walk the bus — including one level into any
+    // SwitchableRegion's options — to find the chip and derive its address.
+    auto findAddr = [&](IBusDevice* dev) -> std::string {
+        auto fmtRange = [](const char* name, uint16_t lo, uint16_t hi) {
+            char buf[64];
+            std::snprintf(buf, sizeof(buf), "%s $%04X-$%04X", name, lo, hi);
+            return std::string(buf);
+        };
+        for (const auto& e : bus_.devices()) {
+            if (!e.device) continue;
+            // Direct container
+            auto r = e.device->findSubDevice(dev);
+            if (r.valid())
+                return fmtRange(dev->deviceName(),
+                                static_cast<uint16_t>(e.start + r.start),
+                                static_cast<uint16_t>(e.start + r.end));
+            // One level deep through SwitchableRegion
+            if (auto* sr = dynamic_cast<SwitchableRegion*>(e.device)) {
+                for (const auto& opt : sr->options()) {
+                    if (!opt.device) continue;
+                    r = opt.device->findSubDevice(dev);
+                    if (r.valid())
+                        return fmtRange(dev->deviceName(),
+                                        static_cast<uint16_t>(e.start + r.start),
+                                        static_cast<uint16_t>(e.start + r.end));
+                }
+            }
+        }
+        return dev->deviceName();  // no address found — just the chip name
+    };
+
+    for (IBusDevice* dev : std::initializer_list<IBusDevice*>{&vic_, &sid_, &cia1_, &cia2_}) {
         if (dev->hasPanel() && !onBus.count(dev))
-            result.push_back({ fallback, dev });
+            result.push_back({ findAddr(dev), dev });
     }
 
     return result;
@@ -314,7 +342,7 @@ IBusDevice* Machine::deviceForId(const std::string& id) {
 // saveConfig
 // ---------------------------------------------------------------------------
 
-MachineConfigResult Machine::saveConfig(const std::string& path) const {
+MachineConfigResult Machine::saveConfig(const std::string& path, int cyclesPerFrame) const {
     using json = nlohmann::json;
 
     json root;
@@ -330,6 +358,8 @@ MachineConfigResult Machine::saveConfig(const std::string& path) const {
         pc["char"]                = preset_.charPath;
         pc["key_matrix_transpose"] = preset_.keyMatrixTranspose;
         root["preset_config"]     = pc;
+        if (cyclesPerFrame > 0)
+            root["cycles_per_frame"] = cyclesPerFrame;
 
         std::ofstream f(path);
         if (!f)
@@ -340,6 +370,8 @@ MachineConfigResult Machine::saveConfig(const std::string& path) const {
 
     root["version"] = 1;
     root["cpu"]     = activeCpu_->cpuName();
+    if (cyclesPerFrame > 0)
+        root["cycles_per_frame"] = cyclesPerFrame;
 
     json devArray = json::array();
     for (const auto& e : bus_.devices()) {
@@ -424,6 +456,7 @@ MachineConfigResult Machine::loadConfig(const std::string& path) {
             result.message = "[Config] Loaded: " + path + "  (preset: C64)";
             result.hasPreset          = true;
             result.keyMatrixTranspose = xpose;
+            result.cyclesPerFrame     = root.value("cycles_per_frame", 0);
             return result;
         }
         return { false, "[Config] Error: unknown preset '" + preset + "'" };
@@ -461,5 +494,9 @@ MachineConfigResult Machine::loadConfig(const std::string& path) {
 
     const std::string cpuName = root.value("cpu", "");
     if (!cpuName.empty()) selectCPU(cpuName);
-    return { true, "[Config] Loaded: " + path + "  (CPU: " + activeCpu_->cpuName() + ")" };
+    MachineConfigResult result;
+    result.ok             = true;
+    result.message        = "[Config] Loaded: " + path + "  (CPU: " + activeCpu_->cpuName() + ")";
+    result.cyclesPerFrame = root.value("cycles_per_frame", 0);
+    return result;
 }

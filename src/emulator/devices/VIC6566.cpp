@@ -34,6 +34,7 @@ const VIC6566::Color VIC6566::kPalette[16] = {
 // ---------------------------------------------------------------------------
 void VIC6566::reset() {
     std::memset(reg_, 0, sizeof(reg_));
+    std::memset(colorRAM_, 0x0E, sizeof(colorRAM_));  // C64 default: light blue text
 
     // Power-on defaults that produce a visible blue screen (C64-compatible)
     reg_[REG_CR1]   = 0x1B;  // DEN=1, RSEL=1, YSCROLL=3
@@ -246,8 +247,9 @@ void VIC6566::renderCharMode() {
     const uint16_t screenBase =
         static_cast<uint16_t>(((reg_[REG_MPTR] >> 4) & 0x0F) * 0x0400);
 
-    const uint8_t bg = reg_[REG_BG0] & 0x0F;
-    const uint8_t fg = 1;  // white — TODO: read per-char colour from $D800
+    const uint8_t bg      = reg_[REG_BG0] & 0x0F;
+    const int     xscroll = reg_[REG_CR2] & 0x07;
+    const int     yscroll = reg_[REG_CR1] & 0x07;
 
     for (int row = 0; row < 25; ++row) {
         for (int col = 0; col < 40; ++col) {
@@ -255,11 +257,12 @@ void VIC6566::renderCharMode() {
             const bool rev  = (code & 0x80) != 0;
             code           &= 0x7F;
 
+            const uint8_t fg  = colorRAM_[row * 40 + col] & 0x0F;
             const uint8_t fgc = rev ? bg : fg;
             const uint8_t bgc = rev ? fg : bg;
 
-            const int x0 = BORDER_X + col * 8;
-            const int y0 = BORDER_Y + row * 8;
+            const int x0 = BORDER_X + col * 8 + xscroll;
+            const int y0 = BORDER_Y + row * 8 + yscroll;
 
             for (int py = 0; py < 8; ++py) {
                 const uint8_t bits = kCharROM[code][py];

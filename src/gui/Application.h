@@ -131,6 +131,12 @@ private:
     char        designerEditBuf_[5]{};
     bool        designerEditFocus_  = false;
 
+    // When the user leaves an address field with an invalid value, we persist
+    // the typed text here so it stays visible in red and pre-fills on re-entry.
+    int         designerInvalidRow_ = -1;
+    int         designerInvalidCol_ = -1;
+    char        designerInvalidBuf_[5]{};
+
     // -----------------------------------------------------------------------
     // Terminal
     // -----------------------------------------------------------------------

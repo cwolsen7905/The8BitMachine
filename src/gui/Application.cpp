@@ -886,6 +886,18 @@ void Application::drawMachineDesigner() {
                         ImGui::SetKeyboardFocusHere();
                         designerEditFocus_ = false;
                     }
+
+                    // Validate live buffer against the other address
+                    char* ep;
+                    unsigned long v     = std::strtoul(designerEditBuf_, &ep, 16);
+                    const bool validHex = (ep != designerEditBuf_ && v <= 0xFFFF);
+                    const uint16_t ns   = (semanticCol == 0 && validHex) ? (uint16_t)v : e.start;
+                    const uint16_t ne   = (semanticCol == 1 && validHex) ? (uint16_t)v : e.end;
+                    const bool invalid  = !validHex || ns > ne;
+
+                    if (invalid)
+                        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.55f, 0.1f, 0.1f, 1.0f));
+
                     ImGui::SetNextItemWidth(52.0f);
                     constexpr ImGuiInputTextFlags kEditFlags =
                         ImGuiInputTextFlags_CharsHexadecimal |
@@ -893,20 +905,60 @@ void Application::drawMachineDesigner() {
                         ImGuiInputTextFlags_EnterReturnsTrue;
                     bool entered = ImGui::InputText("##ec", designerEditBuf_, 5, kEditFlags);
                     bool lost    = !entered && ImGui::IsItemDeactivated();
-                    if (entered || lost) {
-                        char* ep;
-                        unsigned long v = std::strtoul(designerEditBuf_, &ep, 16);
-                        if (ep != designerEditBuf_ && v <= 0xFFFF) {
-                            uint16_t ns = (semanticCol == 0) ? (uint16_t)v : e.start;
-                            uint16_t ne = (semanticCol == 1) ? (uint16_t)v : e.end;
-                            if (ns <= ne)
-                                machine_.bus().modifyAt((size_t)i, ns, ne);
+
+                    if (invalid) ImGui::PopStyleColor();
+
+                    if (entered) {
+                        if (invalid) {
+                            designerEditFocus_ = true;  // reject Enter — keep editing
+                        } else {
+                            // Check if the other address cell has a pending invalid
+                            // value that is now valid with this commit.
+                            const int otherCol = 1 - semanticCol;
+                            if (designerInvalidRow_ == i && designerInvalidCol_ == otherCol) {
+                                char* ep2;
+                                unsigned long ov = std::strtoul(designerInvalidBuf_, &ep2, 16);
+                                uint16_t finalS = (semanticCol == 0) ? ns : (uint16_t)ov;
+                                uint16_t finalE = (semanticCol == 1) ? ne : (uint16_t)ov;
+                                if (ep2 != designerInvalidBuf_ && ov <= 0xFFFF && finalS <= finalE) {
+                                    machine_.bus().modifyAt((size_t)i, finalS, finalE);
+                                    designerInvalidRow_ = designerInvalidCol_ = -1;
+                                    designerEditRow_ = designerEditCol_ = -1;
+                                    return;
+                                }
+                            }
+                            // Only clear invalid state if it belongs to this cell.
+                            if (designerInvalidRow_ == i && designerInvalidCol_ == semanticCol)
+                                designerInvalidRow_ = designerInvalidCol_ = -1;
+                            machine_.bus().modifyAt((size_t)i, ns, ne);
+                            designerEditRow_ = designerEditCol_ = -1;
+                        }
+                    } else if (lost) {
+                        if (invalid) {
+                            // Persist the typed value so it stays visible in red
+                            // and pre-fills when the user re-enters this cell.
+                            designerInvalidRow_ = i;
+                            designerInvalidCol_ = semanticCol;
+                            std::strncpy(designerInvalidBuf_, designerEditBuf_, 5);
+                        } else {
+                            // Only clear invalid state if it belongs to this cell.
+                            if (designerInvalidRow_ == i && designerInvalidCol_ == semanticCol)
+                                designerInvalidRow_ = designerInvalidCol_ = -1;
                         }
                         designerEditRow_ = designerEditCol_ = -1;
                     }
                 } else {
+                    // Check if this cell has a persistent invalid value to display
+                    const bool hasInvalid = (designerInvalidRow_ == i &&
+                                             designerInvalidCol_ == semanticCol);
                     char buf[8];
-                    std::snprintf(buf, sizeof(buf), "$%04X", (unsigned)val);
+                    if (hasInvalid)
+                        std::snprintf(buf, sizeof(buf), "%s", designerInvalidBuf_);
+                    else
+                        std::snprintf(buf, sizeof(buf), "$%04X", (unsigned)val);
+
+                    if (hasInvalid)
+                        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
                     ImGui::PushStyleColor(ImGuiCol_HeaderHovered,
                         ImVec4(0.26f, 0.59f, 0.98f, 0.25f));
                     if (ImGui::Selectable(buf, false,
@@ -914,9 +966,14 @@ void Application::drawMachineDesigner() {
                         designerEditRow_   = i;
                         designerEditCol_   = semanticCol;
                         designerEditFocus_ = true;
-                        std::snprintf(designerEditBuf_, 5, "%04X", (unsigned)val);
+                        // Pre-fill with the invalid value so user can correct it
+                        if (hasInvalid)
+                            std::strncpy(designerEditBuf_, designerInvalidBuf_, 5);
+                        else
+                            std::snprintf(designerEditBuf_, 5, "%04X", (unsigned)val);
                     }
                     ImGui::PopStyleColor();
+                    if (hasInvalid) ImGui::PopStyleColor();
                 }
             };
 
@@ -1468,6 +1525,7 @@ void Application::drawC64PresetDialog() {
             c64KernalPath_, c64BasicPath_, c64CharPath_, keyMatrixTranspose_);
         c64Msg_ = result.message;
         if (result.ok) {
+            cyclesPerFrame_  = 16'667;  // ~1 MHz at 60 fps
             cycleCount_      = 0;
             emulatorRunning_ = false;
             termPrint(result.message);
@@ -1658,7 +1716,7 @@ void Application::saveMachineConfigDialog() {
         "Save Machine Config", "machine.json", {"json"});
     if (path.empty()) return;
 
-    const auto result = machine_.saveConfig(path);
+    const auto result = machine_.saveConfig(path, cyclesPerFrame_);
     termPrint(result.message);
 }
 
@@ -1677,6 +1735,8 @@ void Application::loadMachineConfigDialog() {
         } else {
             machine_.reset();
         }
+        if (result.cyclesPerFrame > 0)
+            cyclesPerFrame_ = result.cyclesPerFrame;
         cycleCount_      = 0;
         emulatorRunning_ = false;
         termPrint(machine_.cpu().stateString());

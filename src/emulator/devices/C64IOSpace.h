@@ -34,6 +34,14 @@ public:
     void    write(uint16_t offset, uint8_t value) override;
     std::string statusLine() const override { return "VIC + SID + CIA1 + CIA2"; }
 
+    SubRange findSubDevice(const IBusDevice* dev) const override {
+        if (dev == vic_)  return {0x000, 0x3FF};
+        if (dev == sid_)  return {0x400, 0x7FF};
+        if (dev == cia1_) return {0xC00, 0xCFF};
+        if (dev == cia2_) return {0xD00, 0xDFF};
+        return {};
+    }
+
 private:
     VIC6566* vic_;
     SID6581* sid_;
