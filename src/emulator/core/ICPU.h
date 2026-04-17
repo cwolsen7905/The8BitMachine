@@ -26,4 +26,11 @@ public:
     virtual bool        complete()    const = 0;
     virtual uint16_t    getPC()       const = 0;
     virtual std::string stateString() const = 0;
+
+    // Register accessors — allows the UI to work through ICPU* for any CPU
+    virtual uint8_t regA()  const = 0;
+    virtual uint8_t regX()  const = 0;
+    virtual uint8_t regY()  const = 0;
+    virtual uint8_t regSP() const = 0;
+    virtual uint8_t regP()  const = 0;
 };

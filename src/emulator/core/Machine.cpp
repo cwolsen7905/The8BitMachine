@@ -6,7 +6,8 @@
 
 Machine::Machine() {
     buildDefaultMap();
-    cpu_.connectBus(&bus_);
+    cpu8502_.connectBus(&bus_);
+    cpu65c02_.connectBus(&bus_);
 }
 
 void Machine::buildDefaultMap() {
@@ -23,11 +24,21 @@ void Machine::buildDefaultMap() {
 
 void Machine::reset() {
     bus_.reset();   // resets RAM + CIA1 + CIA2 (skips nullptr sentinel)
-    cpu_.reset();
+    activeCpu_->reset();
 }
 
 void Machine::clock() {
     bus_.clock();   // ticks CIA1 + CIA2 (skips nullptr sentinel)
+}
+
+bool Machine::selectCPU(const std::string& name) {
+    ICPU* next = nullptr;
+    if (name == cpu8502_.cpuName())   next = &cpu8502_;
+    else if (name == cpu65c02_.cpuName()) next = &cpu65c02_;
+    if (!next) return false;
+    activeCpu_ = next;
+    activeCpu_->reset();
+    return true;
 }
 
 void Machine::setCharOutCallback(std::function<void(uint8_t)> cb) {
@@ -67,7 +78,7 @@ MachineConfigResult Machine::saveConfig(const std::string& path) const {
 
     json root;
     root["version"] = 1;
-    root["cpu"]     = cpu_.cpuName();
+    root["cpu"]     = activeCpu_->cpuName();
 
     json devArray = json::array();
     for (const auto& e : bus_.devices()) {
@@ -132,6 +143,7 @@ MachineConfigResult Machine::loadConfig(const std::string& path) {
             bus_.addDevice(start, end, dev, label);
     }
 
-    const std::string cpu = root.value("cpu", "");
-    return { true, "[Config] Loaded: " + path + "  (CPU: " + cpu + ")" };
+    const std::string cpuName = root.value("cpu", "");
+    if (!cpuName.empty()) selectCPU(cpuName);
+    return { true, "[Config] Loaded: " + path + "  (CPU: " + activeCpu_->cpuName() + ")" };
 }

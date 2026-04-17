@@ -10,7 +10,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ---
 
-## Current State  (v0.8)
+## Current State  (v0.10)
 
 ### Machine Designer
 - **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and an optional `statusLine()` for the designer panel
@@ -19,13 +19,24 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 - **Machine class** — owns device instances, builds the default address map, exposes typed accessors for the UI
 - **Machine Designer panel** (View menu) — live table of all mounted devices with address ranges and per-device status
 
-### CPU  (MOS 8502)
-- All 56 legal 6502/8502 opcodes, all 13 addressing modes
+### CPU  (selectable)
+
+**MOS 8502** (default) and **WDC 65C02** — both available; switch live in the Machine Designer panel.
+
+Shared (`CPU6502Base`):
+- All 56 legal 6502 opcodes, all 13 addressing modes
 - Cycle-accurate timing with page-cross and branch penalties
 - IRQ and NMI with full stack push and vector load
 - BRK / RTI with correct flag handling
-- NMOS 6502 indirect JMP page-wrap bug reproduced
 - Illegal opcodes mapped to extended NOP
+
+MOS 8502 additions:
+- NMOS indirect JMP page-wrap bug reproduced
+
+WDC 65C02 additions:
+- 27 CMOS-only opcodes: BRA, STZ, TRB, TSB, INA, DEA, PHX, PHY, PLX, PLY, BIT immediate
+- Zero-page indirect `($zp)` and absolute indexed indirect `($abs,X)` addressing modes
+- JMP indirect page-wrap bug fixed
 
 ### GUI
 - Dockable panel layout (Dear ImGui docking branch)
@@ -129,9 +140,11 @@ the-8-bit-machine/
         │   ├── IBusDevice.h        Interface every bus device implements
         │   ├── ICPU.h              Interface every CPU implements
         │   ├── Bus.h / .cpp        Dynamic address-space router
-        │   └── Machine.h / .cpp    Owns CPU + devices; builds default address map
+        │   └── Machine.h / .cpp    Owns CPUs + devices; builds default address map
         ├── cpu/
-        │   ├── CPU8502.h / .cpp    MOS 8502 (implements ICPU)
+        │   ├── CPU6502Base.h / .cpp  Shared 6502 logic + NMOS dispatch table
+        │   ├── CPU8502.h / .cpp    MOS 8502 — thin subclass (NMOS + page-wrap bug)
+        │   ├── CPU65C02.h / .cpp   WDC 65C02 — CMOS patches on NMOS table
         │   └── Disassembler.h / .cpp  Stateless 6502 disassembler
         └── devices/
             ├── CIA6526.h / .cpp    MOS 6526 CIA (implements IBusDevice)
@@ -183,7 +196,7 @@ Device instances are owned by `Machine`.  The default map is:
 - [x] **Machine Designer panel** — live address map with device status
 - [ ] Machine Designer: add / remove / rewire devices at runtime via UI
 - [x] **JSON machine config** — save and load machine definitions (File → Save/Load Machine Config)
-- [ ] Second CPU (Z80 or 65C02) to validate the ICPU abstraction
+- [x] **Second CPU (WDC 65C02)** — selectable at runtime via Machine Designer; 27 CMOS opcode patches, JMP indirect bug fixed
 - [ ] VIC-IIe video stub → render to Screen panel texture
 - [ ] SID audio stub (MOS 6581/8580)
 - [ ] Keyboard input via CIA1 matrix

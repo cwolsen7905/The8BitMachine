@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.10.0] - 2026-04-16
+
+### Added
+- **WDC 65C02 CPU** — second CPU implementation, selectable at runtime via the Machine Designer panel
+  - All 27 CMOS opcode patches: BRA, STZ, TRB, TSB, INA, DEA, PHX, PHY, PLX, PLY, BIT immediate, zero-page indirect `($zp)`, absolute indexed indirect `($abs,X)`
+  - JMP indirect page-wrap bug fixed (`nmosBug_ = false`)
+- **`CPU6502Base`** — shared base class for all MOS 6502-family CPUs; `buildNMOSTable()` fills the 256-entry NMOS dispatch table; subclasses patch CMOS entries without duplication
+- **CPU selector dropdown** in Machine Designer panel — switch between "MOS 8502" and "WDC 65C02" live; CPU resets on switch
+- `Machine::selectCPU(name)` — switches the active CPU by name, resets it, and wires it to the bus
+- Both CPUs are always connected to the bus; only the active one receives `clock()` / `reset()` calls from the Application
+
+### Changed
+- `Machine::cpu()` now returns `ICPU&` instead of `CPU8502&` — Application works through the interface for any CPU
+- All direct register field accesses in Application (`cpu.PC`, `cpu.A`, etc.) replaced with ICPU getters (`getPC()`, `regA()`, …)
+- Flag display in CPU State panel uses raw bit masks on `regP()` instead of `CPU8502::Flags` enum values
+
+---
+
 ## [0.9.0] - 2026-04-16
 
 ### Added

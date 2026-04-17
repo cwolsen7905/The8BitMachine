@@ -80,7 +80,9 @@ set(SOURCES
     src/gui/Application.cpp
     src/emulator/core/Bus.cpp
     src/emulator/core/Machine.cpp
+    src/emulator/cpu/CPU6502Base.cpp
     src/emulator/cpu/CPU8502.cpp
+    src/emulator/cpu/CPU65C02.cpp
     src/emulator/cpu/Disassembler.cpp
     src/emulator/devices/CIA6526.cpp
     src/emulator/devices/Memory.cpp

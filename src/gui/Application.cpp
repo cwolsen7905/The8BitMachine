@@ -1,4 +1,5 @@
 #include "Application.h"
+#include "emulator/core/ICPU.h"
 #include "emulator/devices/CIA6526.h"
 #include "emulator/cpu/Disassembler.h"
 #include "gui/FileDialog.h"
@@ -164,18 +165,18 @@ void Application::processEvents() {
     }
 
     if (emulatorRunning_) {
-        CPU8502& cpu = machine_.cpu();
+        ICPU& cpu = machine_.cpu();
         for (int i = 0; i < cyclesPerFrame_; ++i) {
-            machine_.clock();   // tick CIA timers and future devices
+            machine_.clock();
             cpu.clock();
             ++cycleCount_;
 
             if (cpu.complete() && !breakpoints_.empty()
-                    && breakpoints_.count(cpu.PC)) {
+                    && breakpoints_.count(cpu.getPC())) {
                 emulatorRunning_ = false;
                 std::ostringstream bpMsg;
                 bpMsg << "[Break] $" << std::uppercase << std::hex
-                      << std::setfill('0') << std::setw(4) << (unsigned)cpu.PC;
+                      << std::setfill('0') << std::setw(4) << (unsigned)cpu.getPC();
                 termPrint(bpMsg.str());
                 termPrint(cpu.stateString());
                 break;
@@ -294,7 +295,7 @@ void Application::drawMenuBar() {
     const double effMHz = (cyclesPerFrame_ * 60.0) / 1'000'000.0;
     ImGui::TextDisabled("  Cycles: %llu   PC: $%04X   %.2f MHz   %s",
         (unsigned long long)cycleCount_,
-        (unsigned)machine_.cpu().PC,
+        (unsigned)machine_.cpu().getPC(),
         effMHz,
         emulatorRunning_ ? "RUNNING" : "PAUSED");
 
@@ -379,17 +380,18 @@ void Application::drawCpuState() {
     ImGui::SetNextWindowSizeConstraints({ 200.0f, 180.0f }, { 400.0f, 500.0f });
     ImGui::Begin("CPU State", &showCpuState_);
 
-    CPU8502& cpu = machine_.cpu();
+    ICPU& cpu = machine_.cpu();
+    const uint8_t p = cpu.regP();
 
     ImGui::TextUnformatted(cpu.cpuName());
     ImGui::Separator();
 
-    ImGui::Text("PC   $%04X", (unsigned)cpu.PC);
-    ImGui::Text("A    $%02X    (%3d)", (unsigned)cpu.A, (unsigned)cpu.A);
-    ImGui::Text("X    $%02X    (%3d)", (unsigned)cpu.X, (unsigned)cpu.X);
-    ImGui::Text("Y    $%02X    (%3d)", (unsigned)cpu.Y, (unsigned)cpu.Y);
-    ImGui::Text("SP   $%02X", (unsigned)cpu.SP);
-    ImGui::Text("P    $%02X", (unsigned)cpu.P);
+    ImGui::Text("PC   $%04X", (unsigned)cpu.getPC());
+    ImGui::Text("A    $%02X    (%3d)", (unsigned)cpu.regA(), (unsigned)cpu.regA());
+    ImGui::Text("X    $%02X    (%3d)", (unsigned)cpu.regX(), (unsigned)cpu.regX());
+    ImGui::Text("Y    $%02X    (%3d)", (unsigned)cpu.regY(), (unsigned)cpu.regY());
+    ImGui::Text("SP   $%02X", (unsigned)cpu.regSP());
+    ImGui::Text("P    $%02X", (unsigned)p);
     ImGui::Separator();
 
     auto flagCell = [&](const char* name, bool set) {
@@ -400,14 +402,14 @@ void Application::drawCpuState() {
 
     ImGui::TextUnformatted("Flags  ");
     ImGui::SameLine(0.0f, 0.0f);
-    flagCell("N", cpu.P & CPU8502::N);
-    flagCell("V", cpu.P & CPU8502::V);
-    flagCell("-", cpu.P & CPU8502::U);
-    flagCell("B", cpu.P & CPU8502::B);
-    flagCell("D", cpu.P & CPU8502::D);
-    flagCell("I", cpu.P & CPU8502::I);
-    flagCell("Z", cpu.P & CPU8502::Z);
-    flagCell("C", cpu.P & CPU8502::C);
+    flagCell("N", p & 0x80);
+    flagCell("V", p & 0x40);
+    flagCell("-", p & 0x20);
+    flagCell("B", p & 0x10);
+    flagCell("D", p & 0x08);
+    flagCell("I", p & 0x04);
+    flagCell("Z", p & 0x02);
+    flagCell("C", p & 0x01);
 
     ImGui::Separator();
     ImGui::Text("Cycles  %llu", (unsigned long long)cycleCount_);
@@ -441,7 +443,7 @@ void Application::drawDisassembler() {
     ImGui::SetNextWindowSize({ 480.0f, 500.0f }, ImGuiCond_FirstUseEver);
     ImGui::Begin("Disassembler", &showDisasm_);
 
-    CPU8502& cpu = machine_.cpu();
+    ICPU& cpu = machine_.cpu();
 
     ImGui::Checkbox("Follow PC", &disasmFollowPC_);
     ImGui::SameLine(0.0f, 16.0f);
@@ -463,7 +465,7 @@ void Application::drawDisassembler() {
     ImGui::Separator();
 
     const uint16_t viewStart = disasmFollowPC_
-        ? static_cast<uint16_t>(cpu.PC > 40 ? cpu.PC - 40 : 0)
+        ? static_cast<uint16_t>(cpu.getPC() > 40 ? cpu.getPC() - 40 : 0)
         : disasmViewAddr_;
 
     const auto lines = Disassembler::disassemble(machine_.bus(), viewStart, 60);
@@ -486,7 +488,7 @@ void Application::drawDisassembler() {
     ImGui::TableHeadersRow();
 
     for (const auto& line : lines) {
-        const bool isPC = (line.addr == cpu.PC);
+        const bool isPC = (line.addr == cpu.getPC());
         const bool hasBP = breakpoints_.count(line.addr) > 0;
 
         ImGui::TableNextRow();
@@ -562,10 +564,21 @@ void Application::drawMachineDesigner() {
     ImGui::SetNextWindowSize({ 500.0f, 380.0f }, ImGuiCond_FirstUseEver);
     ImGui::Begin("Machine Designer", &showDesigner_);
 
-    // CPU row
+    // CPU selector
     ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "CPU");
     ImGui::SameLine(80.0f);
-    ImGui::TextUnformatted(machine_.cpu().cpuName());
+    const char* cpuNames[] = { "MOS 8502", "WDC 65C02" };
+    const char* currentCPU = machine_.cpu().cpuName();
+    ImGui::SetNextItemWidth(140.0f);
+    if (ImGui::BeginCombo("##cpu", currentCPU)) {
+        for (const char* name : cpuNames) {
+            const bool selected = (std::strcmp(name, currentCPU) == 0);
+            if (ImGui::Selectable(name, selected))
+                machine_.selectCPU(name);
+            if (selected) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
     ImGui::Separator();
 
     // Address-space device table
@@ -616,7 +629,7 @@ void Application::termPrint(const std::string& line) {
 }
 
 void Application::emulatorStep() {
-    CPU8502& cpu = machine_.cpu();
+    ICPU& cpu = machine_.cpu();
     do {
         machine_.clock();
         cpu.clock();
@@ -686,10 +699,10 @@ void Application::drawMemoryViewer() {
     }
 
     if (memViewFollowPC_)
-        memViewAddr_ = machine_.cpu().PC;
+        memViewAddr_ = machine_.cpu().getPC();
 
     ImGui::SameLine(0.0f, 16.0f);
-    ImGui::TextDisabled("PC=$%04X", (unsigned)machine_.cpu().PC);
+    ImGui::TextDisabled("PC=$%04X", (unsigned)machine_.cpu().getPC());
 
     ImGui::Separator();
 
@@ -733,7 +746,7 @@ void Application::drawMemoryViewer() {
     clipper.Begin(kTotalRows);
 
     Bus& bus = machine_.bus();
-    const uint16_t pc = machine_.cpu().PC;
+    const uint16_t pc = machine_.cpu().getPC();
 
     while (clipper.Step()) {
         for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
