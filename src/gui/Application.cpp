@@ -1,6 +1,7 @@
 #include "Application.h"
 #include "emulator/core/ICPU.h"
 #include "emulator/devices/CIA6526.h"
+#include "emulator/devices/SID6581.h"
 #include "emulator/devices/VIC6566.h"
 #include "emulator/cpu/Disassembler.h"
 #include "gui/FileDialog.h"
@@ -44,6 +45,7 @@ Application::Application() {
 }
 
 Application::~Application() {
+    if (audioDevice_) SDL_CloseAudioDevice(audioDevice_);
     if (screenTex_) glDeleteTextures(1, &screenTex_);
 
     ImGui_ImplOpenGL3_Shutdown();
@@ -60,7 +62,7 @@ Application::~Application() {
 // ---------------------------------------------------------------------------
 
 bool Application::init() {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO) != 0) {
         std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return false;
     }
@@ -134,6 +136,25 @@ bool Application::init() {
 
     machine_.setIRQCallback([this]() { machine_.cpu().irq(); });
 
+    // --- SDL audio: mono float32 at 44100 Hz, 512-sample callback ---
+    SDL_AudioSpec want{};
+    want.freq     = 44100;
+    want.format   = AUDIO_F32SYS;
+    want.channels = 1;
+    want.samples  = 512;
+    want.callback = [](void* ud, Uint8* stream, int len) {
+        static_cast<SID6581*>(ud)->generateSamples(
+            reinterpret_cast<float*>(stream), len / sizeof(float), 44100.0f);
+    };
+    want.userdata = &machine_.sid();
+
+    SDL_AudioSpec have{};
+    audioDevice_ = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
+    if (!audioDevice_)
+        std::fprintf(stderr, "SDL_OpenAudioDevice: %s\n", SDL_GetError());
+    else
+        SDL_PauseAudioDevice(audioDevice_, 0);  // start playing immediately
+
     emulatorReset();
 
     running_ = true;
@@ -176,16 +197,102 @@ void Application::processEvents() {
         if (e.type == SDL_QUIT)
             running_ = false;
 
-        if (e.type == SDL_KEYDOWN) {
-            const SDL_Keycode sym = e.key.keysym.sym;
+        if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP) {
+            const SDL_Keycode sym     = e.key.keysym.sym;
+            const bool        pressed = (e.type == SDL_KEYDOWN);
 
-            switch (sym) {
-                case SDLK_F5:  emulatorRunning_ = true;  termPrint("[Emulator] Running..."); break;
-                case SDLK_F6:  emulatorRunning_ = false; termPrint("[Emulator] Paused.");
-                               termPrint(machine_.cpu().stateString());                       break;
-                case SDLK_F8:  emulatorReset();                                               break;
-                case SDLK_F10: emulatorStep();                                                break;
-                default:       break;
+            // Emulator hotkeys always fire regardless of capture state
+            if (pressed) {
+                switch (sym) {
+                    case SDLK_F5:  emulatorRunning_ = true;  termPrint("[Emulator] Running..."); break;
+                    case SDLK_F6:  emulatorRunning_ = false; termPrint("[Emulator] Paused.");
+                                   termPrint(machine_.cpu().stateString());                       break;
+                    case SDLK_F8:  emulatorReset();                                               break;
+                    case SDLK_F10: emulatorStep();                                                break;
+                    default: break;
+                }
+            }
+
+            // Route to CIA1 keyboard matrix when screen has focus
+            if (keyboardCaptured_) {
+                if (sym == SDLK_ESCAPE) {
+                    if (pressed) keyboardCaptured_ = false;
+                } else {
+                    // C64 matrix: (col, row) — active-low, PA selects col, PB reads row
+                    int col = -1, row = -1;
+                    switch (sym) {
+                        // Col 0
+                        case SDLK_RETURN:    col=0; row=0; break;
+                        case SDLK_3:         col=0; row=1; break;
+                        case SDLK_5:         col=0; row=2; break;
+                        case SDLK_7:         col=0; row=3; break;
+                        case SDLK_9:         col=0; row=4; break;
+                        case SDLK_KP_PLUS:   col=0; row=5; break;
+                        case SDLK_1:         col=0; row=7; break;
+                        // Col 1
+                        case SDLK_RIGHT:     col=1; row=0; break;
+                        case SDLK_w:         col=1; row=1; break;
+                        case SDLK_r:         col=1; row=2; break;
+                        case SDLK_y:         col=1; row=3; break;
+                        case SDLK_i:         col=1; row=4; break;
+                        case SDLK_p:         col=1; row=5; break;
+                        case SDLK_KP_MULTIPLY: col=1; row=6; break;
+                        // Col 2
+                        case SDLK_DOWN:      col=2; row=0; break;
+                        case SDLK_a:         col=2; row=1; break;
+                        case SDLK_d:         col=2; row=2; break;
+                        case SDLK_g:         col=2; row=3; break;
+                        case SDLK_j:         col=2; row=4; break;
+                        case SDLK_l:         col=2; row=5; break;
+                        case SDLK_SEMICOLON: col=2; row=6; break;
+                        case SDLK_LCTRL:     col=2; row=7; break;
+                        // Col 3
+                        case SDLK_F7:        col=3; row=0; break;
+                        case SDLK_4:         col=3; row=1; break;
+                        case SDLK_6:         col=3; row=2; break;
+                        case SDLK_8:         col=3; row=3; break;
+                        case SDLK_0:         col=3; row=4; break;
+                        case SDLK_MINUS:     col=3; row=5; break;
+                        case SDLK_HOME:      col=3; row=6; break;
+                        case SDLK_2:         col=3; row=7; break;
+                        // Col 4
+                        case SDLK_F1:        col=4; row=0; break;
+                        case SDLK_z:         col=4; row=1; break;
+                        case SDLK_c:         col=4; row=2; break;
+                        case SDLK_b:         col=4; row=3; break;
+                        case SDLK_m:         col=4; row=4; break;
+                        case SDLK_PERIOD:    col=4; row=5; break;
+                        case SDLK_RSHIFT:    col=4; row=6; break;
+                        case SDLK_SPACE:     col=4; row=7; break;
+                        // Col 5
+                        case SDLK_F3:        col=5; row=0; break;
+                        case SDLK_s:         col=5; row=1; break;
+                        case SDLK_f:         col=5; row=2; break;
+                        case SDLK_h:         col=5; row=3; break;
+                        case SDLK_k:         col=5; row=4; break;
+                        case SDLK_EQUALS:    col=5; row=6; break;
+                        case SDLK_LALT:      col=5; row=7; break;  // Commodore key
+                        // Col 6
+                        case SDLK_F5:        col=6; row=0; break;
+                        case SDLK_e:         col=6; row=1; break;
+                        case SDLK_t:         col=6; row=2; break;
+                        case SDLK_u:         col=6; row=3; break;
+                        case SDLK_o:         col=6; row=4; break;
+                        case SDLK_q:         col=6; row=7; break;
+                        // Col 7
+                        case SDLK_DELETE:
+                        case SDLK_BACKSPACE: col=7; row=0; break;
+                        case SDLK_LSHIFT:    col=7; row=1; break;
+                        case SDLK_x:         col=7; row=2; break;
+                        case SDLK_v:         col=7; row=3; break;
+                        case SDLK_n:         col=7; row=4; break;
+                        case SDLK_COMMA:     col=7; row=5; break;
+                        case SDLK_SLASH:     col=7; row=6; break;
+                        default: break;
+                    }
+                    if (col >= 0)
+                        machine_.cia1().setKey(col, row, pressed);
+                }
             }
         }
     }
@@ -353,6 +460,18 @@ void Application::drawScreen() {
     const ImVec2 sz{ VIC6566::WIDTH * scale, VIC6566::HEIGHT * scale };
 
     ImGui::Image(static_cast<ImTextureID>(screenTex_), sz);
+
+    if (ImGui::IsItemClicked())
+        keyboardCaptured_ = true;
+
+    if (keyboardCaptured_) {
+        const ImVec2 p0 = ImGui::GetItemRectMin();
+        const ImVec2 p1 = ImGui::GetItemRectMax();
+        ImGui::GetWindowDrawList()->AddRect(p0, p1, IM_COL32(0, 255, 80, 220), 0.0f, 0, 2.5f);
+        ImGui::TextColored({0.0f, 1.0f, 0.3f, 1.0f}, "KEYBOARD ACTIVE  (Esc to release)");
+    } else {
+        ImGui::TextDisabled("Click screen to capture keyboard");
+    }
 
     ImGui::End();
 }

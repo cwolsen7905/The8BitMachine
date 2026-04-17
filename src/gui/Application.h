@@ -27,10 +27,11 @@ private:
     // -----------------------------------------------------------------------
     // Window / context
     // -----------------------------------------------------------------------
-    SDL_Window*   window_    = nullptr;
-    SDL_GLContext glContext_  = nullptr;
-    bool          running_   = false;
-    GLuint        screenTex_ = 0;  // VIC framebuffer texture
+    SDL_Window*        window_      = nullptr;
+    SDL_GLContext      glContext_   = nullptr;
+    SDL_AudioDeviceID  audioDevice_ = 0;
+    bool               running_     = false;
+    GLuint             screenTex_   = 0;  // VIC framebuffer texture
 
     // -----------------------------------------------------------------------
     // Emulator — Machine owns CPU, Bus, and all devices
@@ -48,7 +49,8 @@ private:
     // -----------------------------------------------------------------------
     // UI visibility toggles
     // -----------------------------------------------------------------------
-    bool showScreen_   = true;
+    bool showScreen_        = true;
+    bool keyboardCaptured_  = false;
     bool showTerminal_ = true;
     bool showCpuState_ = true;
     bool showDisasm_   = true;

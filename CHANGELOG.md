@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.16.0] - 2026-04-16
+
+### Added
+- **SID audio synthesis** — SDL audio device opened at 44100 Hz mono float32; SID6581 generates samples in the SDL audio callback
+  - 32-bit phase accumulator per voice; SID PAL clock (985248 Hz) used for pitch accuracy
+  - All four waveforms: triangle, sawtooth, pulse (12-bit pulse width), noise (23-bit LFSR with correct 6581 tap positions)
+  - Full ADSR envelope per voice with datasheet-accurate attack/decay/release time tables (2 ms – 8 s); sustain level 0–15
+  - Gate edge detection starts attack / triggers release
+  - TEST bit resets oscillator phase and freezes LFSR
+  - Master volume register (`$D418` bits 3–0) applied to final mix
+  - Register snapshot at start of each buffer avoids holding mutex during synthesis
+
+### Changed
+- `SID6581::write()` and `statusLine()` take a `std::mutex` lock to protect register state shared with the audio thread
+- `Application::init()` now calls `SDL_INIT_AUDIO`; audio device closed in destructor
+
+---
+
 ## [0.15.0] - 2026-04-16
 
 ### Added
