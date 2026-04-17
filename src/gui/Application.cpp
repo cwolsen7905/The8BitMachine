@@ -461,6 +461,15 @@ void Application::drawMenuBar() {
 
     // File ----------------------------------------------------------------
     if (ImGui::BeginMenu("File")) {
+        if (ImGui::MenuItem("New Machine")) {
+            emulatorRunning_ = false;
+            machine_.resetAddressMap();
+            machine_.reset();
+            screenTexW_ = 0; screenTexH_ = 0;
+        }
+
+        ImGui::Separator();
+
         if (ImGui::MenuItem("Load ROM...", "Ctrl+O"))
             loadRomDialog();
 

@@ -207,4 +207,8 @@ private:
     };
     bool        hasPreset_ = false;
     PresetState preset_;
+
+    // Fixed devices that are active in the current preset — clocked, reset,
+    // and shown in panelDevices().  Set by each preset builder / buildDefaultMap.
+    std::vector<IBusDevice*> activeFixedDevices_;
 };

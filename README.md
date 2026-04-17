@@ -10,7 +10,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ---
 
-## Current State  (v0.26)
+## Current State  (v0.27)
 
 ### Machine Designer
 - **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and an optional `statusLine()` for the designer panel
@@ -57,6 +57,7 @@ Zilog Z80:
 - **Memory Viewer panel** (Debug menu) — full hex editor (imgui_memory_editor); click any byte to edit in-place, Follow PC toggle, PC highlighted in yellow, built-in data preview and column options
 - **Per-device panels** (View menu) — each chip with `hasPanel()` gets its own dockable window; CIA shows timers/ICR/TOD/ports, VIC shows raster/colours/control, SID shows voices/filter/volume; panels are listed dynamically based on what is mounted
 - **Machine Designer panel** (View menu) — interactive address map: click Start/End addresses to edit inline (invalid values stay red, Tab commits like Enter, clicking away persists red so you can re-enter), drag `=` handle to reorder priority, Sort by Address, Reset to Defaults; validation highlights unreachable entries (orange) and invalid ranges (red), warns when no catch-all entry is present; **Contained Devices** section lists chips embedded inside container devices (VIC/SID/CIA inside C64IOSpace) with live computed addresses
+- **File → New Machine** — resets to a blank default map (MOS 8502, VIC+SID+CIA1+CIA2, 64 KB RAM); clears any active preset and stops the emulator
 - **ROM loading** (File → Load ROM) — native macOS file dialog; supports raw `.bin` and Commodore `.prg`; resets CPU and jumps disassembler to load address
 - **Keyboard capture** — click the Screen panel to direct keyboard input into the active machine's matrix; green border overlay and status label indicate active capture; Escape releases; C64 preset routes SDL keys to CIA1 matrix; ZX Spectrum preset routes SDL keys to the ULA 8×5 keyboard matrix (Caps Shift = Left Shift, Symbol Shift = Ctrl; cursor keys emulated via Caps+5/6/7/8)
 - **Machine config save / load** (File → Save / Load Machine Config) — persists the address-space wiring as a JSON file so machines can be recalled and shared; `cycles_per_frame` is written/read so emulator speed is restored automatically
@@ -217,6 +218,8 @@ Device instances are owned by `Machine`.  The default map is:
 - [x] **Machine Designer: Contained Devices** — chips inside container devices (VIC/SID/CIA inside C64IOSpace) shown in their own table with live computed addresses
 - [x] **Zilog Z80 CPU** — full instruction set (unprefixed + CB/ED/DD/FD/DDCB/FDCB prefixes), alternate registers, IX/IY indexed, IM 0/1/2, EI delay, NMI at `$0066`
 - [x] **ZX Spectrum 48K preset** — ULA display (256×192 + border), 16-colour pixel+attribute rendering, flash, 50 Hz frame IRQ, 8×5 keyboard matrix, border colour via port `$FE`
+- [x] **File → New Machine** — blank-slate reset to default address map; clears active preset
+- [x] **Preset-scoped device clocking** — only active preset's chips are clocked/reset/shown in panels
 - [ ] C128 MMU model (configurable bank sizes, multi-region, hardware-accurate)
 
 ---

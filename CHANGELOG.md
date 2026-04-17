@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.27.0] - 2026-04-17
+
+### Added
+- **File → New Machine** — resets to a blank default address map (MOS 8502, VIC+SID+CIA1+CIA2 on bus, 64 KB RAM), clears any active preset, and stops the emulator
+- **Preset-scoped device clocking** — `activeFixedDevices_` list populated by each preset builder; `clock()` and `reset()` only tick the devices relevant to the active preset (VIC/SID/CIA for C64, ULA for Spectrum), eliminating wasted cycles on inactive chips
+
+### Fixed
+- **Contained Devices showing wrong chips** — VIC, SID, and CIA chips no longer appear under "Contained Devices" in the Machine Designer when the Spectrum preset is active; `panelDevices()` now uses `activeFixedDevices_` instead of a hardcoded full list
+
+---
+
 ## [0.26.0] - 2026-04-17
 
 ### Added

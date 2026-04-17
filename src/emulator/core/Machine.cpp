@@ -100,6 +100,8 @@ MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
     cpu6510_.connectBus(&bus_);
     cpu6510_.reset();   // fires onIOWrite with power-on state ($37/$2F → BASIC+IO+KERNAL)
 
+    activeFixedDevices_ = { &vic_, &sid_, &cia1_, &cia2_ };
+
     // Record preset so saveConfig can serialise it instead of the device list.
     hasPreset_ = true;
     preset_    = { "c64", kernalPath, basicPath, charPath, keyMatrixTranspose };
@@ -108,6 +110,7 @@ MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
 }
 
 void Machine::buildDefaultMap() {
+    activeFixedDevices_ = { &vic_, &sid_, &cia1_, &cia2_ };
     // Bus iterates entries in registration order — higher-priority devices
     // must be registered first so they shadow the catch-all RAM entry.
     bus_.addDevice(0xD000, 0xD3FF, &vic_,  "VIC-IIe $D000–$D3FF");
@@ -124,6 +127,9 @@ void Machine::buildDefaultMap() {
 void Machine::resetAddressMap() {
     bus_.clearDevices();
     dynamicDevices_.clear();
+    hasPreset_ = false;
+    activeScreen_ = { VIC6566::WIDTH, VIC6566::HEIGHT, vic_.framebuffer() };
+    activeCpu_ = &cpu8502_;
     buildDefaultMap();
 }
 
@@ -246,6 +252,8 @@ MachineConfigResult Machine::buildSpectrumPreset(const std::string& romPath) {
     activeCpu_ = &cpuZ80_;
     activeCpu_->reset();
 
+    activeFixedDevices_ = { &ula_ };
+
     // Point the active screen at the ULA framebuffer
     activeScreen_ = { ULA::WIDTH, ULA::HEIGHT, ula_.framebuffer() };
 
@@ -257,21 +265,13 @@ MachineConfigResult Machine::buildSpectrumPreset(const std::string& romPath) {
 }
 
 void Machine::reset() {
-    vic_.reset();
-    sid_.reset();
-    cia1_.reset();
-    cia2_.reset();
-    ula_.reset();
+    for (IBusDevice* dev : activeFixedDevices_) dev->reset();
     bus_.reset();   // resets RAM and any dynamic devices
     activeCpu_->reset();
 }
 
 void Machine::clock() {
-    vic_.clock();
-    sid_.clock();
-    cia1_.clock();
-    cia2_.clock();
-    ula_.clock();
+    for (IBusDevice* dev : activeFixedDevices_) dev->clock();
     bus_.clock();   // ticks dynamic devices; skips fixed chips above
 }
 
@@ -349,7 +349,7 @@ std::vector<Machine::PanelEntry> Machine::panelDevices() {
         return dev->deviceName();  // no address found — just the chip name
     };
 
-    for (IBusDevice* dev : std::initializer_list<IBusDevice*>{&vic_, &sid_, &cia1_, &cia2_, &ula_}) {
+    for (IBusDevice* dev : activeFixedDevices_) {
         if (dev->hasPanel() && !onBus.count(dev))
             result.push_back({ findAddr(dev), dev });
     }
