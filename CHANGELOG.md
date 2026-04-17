@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.9.0] - 2026-04-16
+
+### Added
+- **Machine config save / load** (File → Save Machine Config / Load Machine Config) — persists the address-space wiring as a JSON file so machines can be recalled and shared
+- `FileDialog::saveFile()` — native macOS NSSavePanel wrapper
+- nlohmann/json v3.11.3 added as a CMake FetchContent dependency (header-only, fetched automatically)
+
+### Config format (version 1)
+```json
+{ "version": 1, "cpu": "MOS 8502",
+  "devices": [{ "id": "cia1", "label": "CIA1 $F100–$F1FF", "start": "F100", "end": "F1FF" }, …] }
+```
+Device IDs: `cia1`, `cia2`, `ram`, `char_out`.
+
+---
+
 ## [0.8.0] - 2026-04-16
 
 ### Changed — Architecture pivot: general-purpose 8-bit machine designer

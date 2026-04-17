@@ -37,6 +37,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 - **Memory Viewer panel** (Debug menu) — 16-column hex+ASCII grid, full 64 KB scrollable, jump to any address, PC highlighted in yellow
 - **Machine Designer panel** (View menu) — address map table with device names, ranges, and live status lines
 - **ROM loading** (File → Load ROM) — native macOS file dialog; supports raw `.bin` and Commodore `.prg`; resets CPU and jumps disassembler to load address
+- **Machine config save / load** (File → Save / Load Machine Config) — persists the address-space wiring as a JSON file so machines can be recalled and shared
 
 ### Emulator core
 - 64 KB flat RAM; reset vector points to the loaded program or the built-in NOP stub at `$0200`
@@ -178,7 +179,7 @@ Device instances are owned by `Machine`.  The default map is:
 - [x] **Dynamic address-space map** — devices registered at runtime, priority routing
 - [x] **Machine Designer panel** — live address map with device status
 - [ ] Machine Designer: add / remove / rewire devices at runtime via UI
-- [ ] JSON machine config — save and load machine definitions
+- [x] **JSON machine config** — save and load machine definitions (File → Save/Load Machine Config)
 - [ ] Second CPU (Z80 or 65C02) to validate the ICPU abstraction
 - [ ] VIC-IIe video stub → render to Screen panel texture
 - [ ] SID audio stub (MOS 6581/8580)
@@ -194,4 +195,5 @@ Device instances are owned by `Machine`.  The default map is:
 | [SDL2](https://libsdl.org) | ≥ 2.0.22 | Homebrew |
 | [Dear ImGui](https://github.com/ocornut/imgui) | v1.91.6-docking | CMake FetchContent |
 | OpenGL | 3.3 core | System (macOS) |
+| [nlohmann/json](https://github.com/nlohmann/json) | v3.11.3 | CMake FetchContent |
 | [cc65](https://cc65.github.io) (ca65/ld65) | ≥ 2.19 | Homebrew (optional) |
