@@ -46,7 +46,7 @@ WDC 65C02 additions:
 - **CPU State panel** — live register and flag display, CIA1 timer status, cycle counter
 - **Disassembler panel** (Debug menu) — live disassembly with Follow PC, Go To address, highlighted current instruction; click any row to toggle a breakpoint (red `●`); emulator halts automatically when PC hits a breakpoint
 - **Memory Viewer panel** (Debug menu) — full hex editor (imgui_memory_editor); click any byte to edit in-place, Follow PC toggle, PC highlighted in yellow, built-in data preview and column options
-- **Machine Designer panel** (View menu) — address map table with device names, ranges, and live status lines
+- **Machine Designer panel** (View menu) — interactive address map: click Start/End addresses to edit inline, drag `=` handle to reorder priority, Sort by Address, Reset to Defaults; validation highlights unreachable entries (orange) and invalid ranges (red), warns when no catch-all entry is present
 - **ROM loading** (File → Load ROM) — native macOS file dialog; supports raw `.bin` and Commodore `.prg`; resets CPU and jumps disassembler to load address
 - **Keyboard capture** — click the Screen panel to direct keyboard input into the CIA1 matrix; green border overlay and status label indicate active capture; Escape releases
 - **Machine config save / load** (File → Save / Load Machine Config) — persists the address-space wiring as a JSON file so machines can be recalled and shared
@@ -183,7 +183,7 @@ Device instances are owned by `Machine`.  The default map is:
 - [x] **`IBusDevice` / `ICPU` interfaces** — extensible plugin architecture
 - [x] **Dynamic address-space map** — devices registered at runtime, priority routing
 - [x] **Machine Designer panel** — live address map with device status
-- [ ] Machine Designer: add / remove / rewire devices at runtime via UI
+- [x] **Machine Designer: add / remove / rewire devices at runtime via UI** — inline address editing, drag-to-reorder, sort, reset, validation warnings
 - [x] **JSON machine config** — save and load machine definitions (File → Save/Load Machine Config)
 - [x] **Second CPU (WDC 65C02)** — selectable at runtime via Machine Designer; 27 CMOS opcode patches, JMP indirect bug fixed
 - [x] **VIC-IIe** (`$D000–$D3FF`) — register file, raster IRQ, border + background colour, 40×25 character mode with embedded open font
