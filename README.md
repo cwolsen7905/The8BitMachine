@@ -41,7 +41,7 @@ WDC 65C02 additions:
 ### GUI
 - Dockable panel layout (Dear ImGui docking branch)
 - Standard menu bar — File / Emulator / View / Debug / Help
-- **Screen panel** — 320×200 canvas (placeholder; texture rendering not yet wired)
+- **Screen panel** — 400×280 live VIC framebuffer (320×200 active area + 40px border); border and background colours driven by `$D020`/`$D021`; 40×25 character mode renders white glyphs from an embedded open 8×8 font; screen codes `$80–$FF` render in reverse video
 - **Terminal panel** — green-on-black scrollable log with command input
 - **CPU State panel** — live register and flag display, CIA1 timer status, cycle counter
 - **Disassembler panel** (Debug menu) — live disassembly with Follow PC, Go To address, highlighted current instruction; click any row to toggle a breakpoint (red `●`); emulator halts automatically when PC hits a breakpoint
@@ -199,7 +199,7 @@ Device instances are owned by `Machine`.  The default map is:
 - [ ] Machine Designer: add / remove / rewire devices at runtime via UI
 - [x] **JSON machine config** — save and load machine definitions (File → Save/Load Machine Config)
 - [x] **Second CPU (WDC 65C02)** — selectable at runtime via Machine Designer; 27 CMOS opcode patches, JMP indirect bug fixed
-- [x] **VIC-IIe stub** (`$D000–$D3FF`) — register file, raster IRQ, background colour rendered to Screen panel via OpenGL texture
+- [x] **VIC-IIe** (`$D000–$D3FF`) — register file, raster IRQ, border + background colour, 40×25 character mode with embedded open font
 - [ ] SID audio stub (MOS 6581/8580)
 - [ ] Keyboard input via CIA1 matrix
 - [ ] Proper ROM regions and bank switching

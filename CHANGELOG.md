@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.13.0] - 2026-04-16
+
+### Added
+- **VIC border colour** — framebuffer expanded to 400×280 (400×ACTIVE + 40px border each side); border region painted from `$D020` independently of the 320×200 active area
+- **Character mode rendering** — 40×25 text mode; reads screen codes from screen RAM (default `$0400`), renders 8×8 glyphs using an embedded open clean-room font (`CharROM.h`); screen codes `$80–$FF` rendered in reverse video; foreground defaults to white (colour RAM `$D800` not yet implemented)
+- **`CharROM.h`** — 256-entry 8×8 open bitmap font covering `@`, A–Z, 0–9, punctuation, and common graphics blocks; clean-room, no copyright concerns
+
+### Changed
+- `VIC6566::WIDTH/HEIGHT` now 400×280 (was 320×200); `ACTIVE_W/ACTIVE_H/BORDER_X/BORDER_Y` constants added
+- Screen panel OpenGL texture automatically picks up new dimensions via `VIC6566::WIDTH/HEIGHT`
+
+---
+
 ## [0.12.0] - 2026-04-16
 
 ### Changed

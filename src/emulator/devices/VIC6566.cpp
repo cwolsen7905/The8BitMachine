@@ -1,4 +1,6 @@
 #include "emulator/devices/VIC6566.h"
+#include "emulator/devices/CharROM.h"
+#include "emulator/core/Bus.h"
 
 #include <cstring>
 #include <sstream>
@@ -160,9 +162,56 @@ std::string VIC6566::statusLine() const {
 // TODO: character-mode rendering, sprite rendering, border colour, bitmap mode.
 // ---------------------------------------------------------------------------
 void VIC6566::renderFrame() {
-    const bool den = (reg_[REG_CR1] & 0x10) != 0;
-    const uint8_t bg = den ? (reg_[REG_BG0] & 0x0F) : 0;
-    fillRect(0, 0, WIDTH, HEIGHT, bg);
+    const bool    den    = (reg_[REG_CR1] & 0x10) != 0;
+    const uint8_t border = reg_[REG_BORDC] & 0x0F;
+    const uint8_t bg     = den ? (reg_[REG_BG0] & 0x0F) : 0;
+
+    fillRect(0,        0,        WIDTH,    HEIGHT,   border);
+    fillRect(BORDER_X, BORDER_Y, ACTIVE_W, ACTIVE_H, bg);
+
+    if (den && bus_)
+        renderCharMode();
+}
+
+// ---------------------------------------------------------------------------
+// renderCharMode — standard 40×25 text mode.
+//
+// Reads screen codes from screen RAM (default $0400), looks each up in the
+// embedded CharROM, and renders 8×8 glyphs into the active display area.
+// Foreground colour defaults to white (1); colour RAM ($D800) is not yet
+// implemented.  Screen codes $80–$FF are rendered in reverse video.
+// ---------------------------------------------------------------------------
+void VIC6566::renderCharMode() {
+    // Screen RAM base: bits 7–4 of REG_MPTR × $0400 (default $D018=$14 → $0400)
+    const uint16_t screenBase =
+        static_cast<uint16_t>(((reg_[REG_MPTR] >> 4) & 0x0F) * 0x0400);
+
+    const uint8_t bg = reg_[REG_BG0] & 0x0F;
+    const uint8_t fg = 1;  // white — TODO: read per-char colour from $D800
+
+    for (int row = 0; row < 25; ++row) {
+        for (int col = 0; col < 40; ++col) {
+            uint8_t code    = bus_->read(static_cast<uint16_t>(screenBase + row * 40 + col));
+            const bool rev  = (code & 0x80) != 0;
+            code           &= 0x7F;
+
+            const uint8_t fgc = rev ? bg : fg;
+            const uint8_t bgc = rev ? fg : bg;
+
+            const int x0 = BORDER_X + col * 8;
+            const int y0 = BORDER_Y + row * 8;
+
+            for (int py = 0; py < 8; ++py) {
+                const uint8_t bits = kCharROM[code][py];
+                for (int px = 0; px < 8; ++px) {
+                    const bool set      = (bits >> (7 - px)) & 1;
+                    const Color& c      = kPalette[set ? fgc : bgc];
+                    uint8_t* p          = fb_.data() + ((y0 + py) * WIDTH + (x0 + px)) * 4;
+                    p[0] = c.r; p[1] = c.g; p[2] = c.b; p[3] = 0xFF;
+                }
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

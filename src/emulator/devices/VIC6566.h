@@ -24,8 +24,13 @@ class Bus;
 // ---------------------------------------------------------------------------
 class VIC6566 : public IBusDevice {
 public:
-    static constexpr int WIDTH  = 320;
-    static constexpr int HEIGHT = 200;
+    // Full rasterised frame including border area (NTSC proportions)
+    static constexpr int BORDER_X = 40;   // pixels left and right of active area
+    static constexpr int BORDER_Y = 40;   // pixels above and below active area
+    static constexpr int ACTIVE_W = 320;
+    static constexpr int ACTIVE_H = 200;
+    static constexpr int WIDTH    = ACTIVE_W + 2 * BORDER_X;  // 400
+    static constexpr int HEIGHT   = ACTIVE_H + 2 * BORDER_Y;  // 280
 
     // -----------------------------------------------------------------------
     // IBusDevice interface
@@ -88,6 +93,7 @@ private:
     bool dirty_   = false;
 
     void renderFrame();
+    void renderCharMode();
     void fillRect(int x, int y, int w, int h, uint8_t colorIdx);
     void checkRasterIRQ();
 };
