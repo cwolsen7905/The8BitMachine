@@ -81,6 +81,7 @@ set(SOURCES
     src/emulator/core/Bus.cpp
     src/emulator/core/Machine.cpp
     src/emulator/cpu/CPU6502Base.cpp
+    src/emulator/cpu/CPU6510.cpp
     src/emulator/cpu/CPU8502.cpp
     src/emulator/cpu/CPU65C02.cpp
     src/emulator/cpu/Disassembler.cpp

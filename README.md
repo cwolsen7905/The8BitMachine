@@ -10,7 +10,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ---
 
-## Current State  (v0.20)
+## Current State  (v0.21)
 
 ### Machine Designer
 - **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and an optional `statusLine()` for the designer panel
@@ -21,7 +21,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ### CPU  (selectable)
 
-**MOS 8502** (default) and **WDC 65C02** — both available; switch live in the Machine Designer panel.
+**MOS 8502** (default), **MOS 6510**, and **WDC 65C02** — all selectable live in the Machine Designer panel.
 
 Shared (`CPU6502Base`):
 - All 56 legal 6502 opcodes, all 13 addressing modes
@@ -186,6 +186,7 @@ Device instances are owned by `Machine`.  The default map is:
 - [x] **Machine Designer: add / remove / rewire devices at runtime via UI** — inline address editing, drag-to-reorder, sort, reset, validation warnings
 - [x] **JSON machine config** — save and load machine definitions (File → Save/Load Machine Config)
 - [x] **Second CPU (WDC 65C02)** — selectable at runtime via Machine Designer; 27 CMOS opcode patches, JMP indirect bug fixed
+- [x] **MOS 6510 CPU** — built-in I/O port at `$00`/`$01`; `onIOWrite` callback drives `SwitchableRegion` bank switching; C64 power-on defaults (`DDR=$2F`, data=`$37`)
 - [x] **VIC-IIe** (`$D000–$D3FF`) — register file, raster IRQ, border + background colour, 40×25 character mode with embedded open font
 - [x] **SID audio (MOS 6581/8580)** at `$D400–$D7FF` — all 4 waveforms, ADSR envelopes, master volume, SDL audio output; filter and ring/sync modulation in a future step
 - [x] **Keyboard input via CIA1 matrix** — SDL keys routed to CIA1 `setKey(col, row)`; capture focus model with visual indicator

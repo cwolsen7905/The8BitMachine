@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.21.0] - 2026-04-17
+
+### Added
+- **MOS 6510 CPU** — NMOS 6502 subclass with built-in 6-bit I/O port at `$00`/`$01`; selectable in Machine Designer CPU dropdown alongside MOS 8502 and WDC 65C02
+  - `$00` — direction register (DDR): 1=output, 0=input per bit; power-on default `$2F`
+  - `$01` — data register; power-on default `$37` (LORAM=1, HIRAM=1, CHAREN=1)
+  - Reads/writes to `$00`/`$01` are intercepted before reaching the bus; all other accesses pass through normally
+  - `onIOWrite(data, dir)` callback fires on every port write so a `BankController` or custom handler can switch `SwitchableRegion`s — the foundation for the C64 memory map
+  - `CPU6502Base::busRead` / `busWrite` made `virtual` to enable the override; no other behaviour changed
+- `Machine::cpu6510()` accessor for direct access to the 6510 I/O port from machine-preset code
+
+### Changed
+- Machine Designer CPU selector now lists "MOS 8502", "MOS 6510", and "WDC 65C02"
+
+---
+
 ## [0.20.0] - 2026-04-17
 
 ### Added

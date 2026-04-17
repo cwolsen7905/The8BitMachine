@@ -6,6 +6,7 @@
 
 Machine::Machine() {
     buildDefaultMap();
+    cpu6510_.connectBus(&bus_);
     cpu8502_.connectBus(&bus_);
     cpu65c02_.connectBus(&bus_);
     vic_.connectBus(&bus_);
@@ -120,7 +121,8 @@ void Machine::clock() {
 
 bool Machine::selectCPU(const std::string& name) {
     ICPU* next = nullptr;
-    if (name == cpu8502_.cpuName())   next = &cpu8502_;
+    if      (name == cpu6510_.cpuName())  next = &cpu6510_;
+    else if (name == cpu8502_.cpuName())  next = &cpu8502_;
     else if (name == cpu65c02_.cpuName()) next = &cpu65c02_;
     if (!next) return false;
     activeCpu_ = next;

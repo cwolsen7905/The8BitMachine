@@ -95,8 +95,8 @@ protected:
     // -----------------------------------------------------------------------
     // Bus / stack helpers
     // -----------------------------------------------------------------------
-    uint8_t  busRead (uint16_t addr);
-    void     busWrite(uint16_t addr, uint8_t val);
+    virtual uint8_t  busRead (uint16_t addr);
+    virtual void     busWrite(uint16_t addr, uint8_t val);
     uint8_t  fetch();
     void     stackPush(uint8_t v);
     uint8_t  stackPop();

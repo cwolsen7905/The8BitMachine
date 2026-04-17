@@ -733,7 +733,7 @@ void Application::drawMachineDesigner() {
     // ---- CPU selector ----
     ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "CPU");
     ImGui::SameLine(80.0f);
-    const char* cpuNames[] = { "MOS 8502", "WDC 65C02" };
+    const char* cpuNames[] = { "MOS 8502", "MOS 6510", "WDC 65C02" };
     const char* currentCPU = machine_.cpu().cpuName();
     ImGui::SetNextItemWidth(140.0f);
     if (ImGui::BeginCombo("##cpu", currentCPU)) {
