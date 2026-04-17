@@ -360,18 +360,14 @@ void Application::render() {
     if (showC64Preset_) drawC64PresetDialog();
     if (showKeyDebug_) drawKeyboardDebug();
 
-    // Per-device panels — one window per unique device that opted in
-    {
-        std::unordered_set<const IBusDevice*> rendered;
-        for (const auto& entry : machine_.bus().devices()) {
-            if (!entry.device || !entry.device->hasPanel()) continue;
-            if (!rendered.insert(entry.device).second) continue;
-            auto it = devicePanelVisible_.find(entry.device);
-            if (it == devicePanelVisible_.end() || !it->second) continue;
-            bool open = true;
-            entry.device->drawPanel(entry.label.c_str(), &open);
-            if (!open) devicePanelVisible_[entry.device] = false;
-        }
+    // Per-device panels — uses panelDevices() so fixed chips are found even
+    // when they are not direct bus entries (e.g. inside C64IOSpace).
+    for (const auto& entry : machine_.panelDevices()) {
+        auto it = devicePanelVisible_.find(entry.device);
+        if (it == devicePanelVisible_.end() || !it->second) continue;
+        bool open = true;
+        entry.device->drawPanel(entry.label.c_str(), &open);
+        if (!open) devicePanelVisible_[entry.device] = false;
     }
 }
 
