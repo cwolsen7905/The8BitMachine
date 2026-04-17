@@ -253,6 +253,29 @@ void Machine::setIRQCallback(std::function<void()> cb) {
 // Config helpers
 // ---------------------------------------------------------------------------
 
+std::vector<Machine::PanelEntry> Machine::panelDevices() {
+    std::vector<PanelEntry> result;
+    std::unordered_set<IBusDevice*> seen;
+
+    // Fixed chips always present — include them first regardless of bus layout.
+    for (auto [label, dev] : std::initializer_list<std::pair<const char*, IBusDevice*>>{
+            {"VIC-IIe",  &vic_},
+            {"SID 6581", &sid_},
+            {"CIA1",     &cia1_},
+            {"CIA2",     &cia2_},
+        }) {
+        if (dev->hasPanel() && seen.insert(dev).second)
+            result.push_back({ label, dev });
+    }
+
+    // Dynamic devices registered on the bus (Machine Designer additions).
+    for (const auto& e : bus_.devices()) {
+        if (e.device && e.device->hasPanel() && seen.insert(e.device).second)
+            result.push_back({ e.label, e.device });
+    }
+    return result;
+}
+
 const char* Machine::idForDevice(const IBusDevice* dev) const {
     if (dev == &vic_)   return "vic";
     if (dev == &sid_)   return "sid";

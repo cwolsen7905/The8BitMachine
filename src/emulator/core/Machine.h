@@ -143,6 +143,12 @@ public:
     void addControllerMapping(BankController* ctrl, uint8_t value,
                               SwitchableRegion* region, uint8_t bankIndex);
 
+    // All devices that have debug panels, regardless of bus layout.
+    // Always includes the fixed chips (VIC, SID, CIA1/2) even when they are
+    // not direct bus entries (e.g. inside C64IOSpace in preset mode).
+    struct PanelEntry { std::string label; IBusDevice* device; };
+    std::vector<PanelEntry> panelDevices();
+
     // Look up a device pointer by its config ID ("vic", "sid", "cia1", etc.)
     // Returns nullptr for "char_out" and unknown IDs.
     IBusDevice* deviceForId(const std::string& id);

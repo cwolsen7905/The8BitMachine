@@ -457,13 +457,10 @@ void Application::drawMenuBar() {
     if (ImGui::BeginMenu("Machine")) {
         ImGui::MenuItem("Machine Designer", nullptr, &showDesigner_);
 
-        // Dynamic device panels — one entry per unique device with hasPanel()
-        std::unordered_set<const IBusDevice*> seen;
-        bool anyDevice = false;
-        for (const auto& entry : machine_.bus().devices()) {
-            if (!entry.device || !entry.device->hasPanel()) continue;
-            if (!seen.insert(entry.device).second) continue;
-            if (!anyDevice) { ImGui::Separator(); anyDevice = true; }
+        // Device panels — fixed chips + any designer-added devices with panels.
+        const auto panels = machine_.panelDevices();
+        if (!panels.empty()) ImGui::Separator();
+        for (const auto& entry : panels) {
             bool& vis = devicePanelVisible_[entry.device];
             ImGui::MenuItem(entry.label.c_str(), nullptr, &vis);
         }
