@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.25.0] - 2026-04-17
+
+### Added
+- **VIC color RAM** — 1 KB color RAM at `$D800–$DBFF` (4 bits per cell); initialized to `$0E` (light blue) on reset; CPU-accessible via `C64IOSpace`; each character cell reads its foreground color from color RAM during rendering
+- **VIC X/Y scroll** — `XSCROLL` (`$D016` bits 0–2) and `YSCROLL` (`$D011` bits 0–2) shift the character grid by 0–7 pixels in each axis; matches real VIC-II fine-scroll behavior
+- **JSON preset system** — bundled `presets/` folder scanned at startup via `scanPresets()`; File → Load Preset submenu populated dynamically from JSON files found next to the executable; preset JSON schema: `{ version, preset_type, name, description, cpu, cycles_per_frame, key_matrix_transpose, roms: [{key, label, description}] }`
+- **`presets/c64.json`** — Commodore 64 preset definition; drives the generic ROM picker dialog; replaces the old hardcoded File → Presets → Commodore 64 menu item
+- **Generic preset dialog** — single `drawPresetDialog()` handles any preset type; ROM paths collected via native file browser per `PresetRomEntry`; dispatches to `buildC64Preset()` (or future builders) by `preset_type`
+- **C64IOSpace as Machine Designer device** — `C64IOSpace` is now a fixed `Machine` member wired into `deviceForId` / `idForDevice`; appears in the Add Device dropdown (`c64_io_space`) so custom machines can mount it manually
+- **Machine Designer — Contained Devices section** — a second table below the bus entries lists chips embedded inside container devices (e.g. VIC/SID/CIA1/CIA2 inside `C64IOSpace`); derived via `IBusDevice::findSubDevice()` with live computed addresses
+- **`IBusDevice::findSubDevice()`** — new virtual method returns the address sub-range where a given child device lives within its container; `C64IOSpace` implements this for all four sub-chips; used by `panelDevices()` and the Machine Designer panel
+- **Emulator speed persistence** — `saveConfig(path, cyclesPerFrame)` writes `cycles_per_frame` to JSON; `loadConfig` returns it in `MachineConfigResult.cyclesPerFrame` and Application applies it; C64 preset auto-sets ~1 MHz (16 667 cycles/frame)
+- **CMakeLists.txt preset copy** — POST_BUILD step copies `presets/` directory next to the executable so JSON files are always present in the build output
+
+### Fixed
+- **CIA6526 TOD latch** — `REG_TOD_10` was returning the live `tod10_` counter instead of the frozen `todLatch10_`; reading `$0B` (HR) now correctly latches all TOD registers until `$08` (10THS) is read, matching real hardware behavior
+- **Machine Designer address labels** — panel labels were built from the stale stored label string; `panelDevices()` now rebuilds labels from live `e.start` / `e.end` on every call so addresses always reflect the current bus wiring
+
+### Changed
+- **Machine Designer address validation UX** — invalid address values (Start > End, or non-hex) now stay visible in red after focus loss; the field pre-fills with the last bad value on re-entry so the user can correct it; Tab commits like Enter; the designer no longer resets the value to the previous good state on blur
+- **`panelDevices()` label generation** — labels derived from live bus entry addresses plus `findSubDevice()` walk for chips inside container devices; no hardcoded address strings
+
+---
+
 ## [0.24.0] - 2026-04-17
 
 ### Added

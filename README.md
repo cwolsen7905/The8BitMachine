@@ -10,7 +10,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ---
 
-## Current State  (v0.24)
+## Current State  (v0.25)
 
 ### Machine Designer
 - **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and an optional `statusLine()` for the designer panel
@@ -41,21 +41,24 @@ WDC 65C02 additions:
 ### GUI
 - Dockable panel layout (Dear ImGui docking branch)
 - Standard menu bar — File / Emulator / View / Debug / Help
-- **Screen panel** — 400×280 live VIC framebuffer (320×200 active area + 40px border); border and background colours driven by `$D020`/`$D021`; 40×25 character mode renders white glyphs from an embedded open 8×8 font; screen codes `$80–$FF` render in reverse video
+- **Screen panel** — 400×280 live VIC framebuffer (320×200 active area + 40px border); border and background colours driven by `$D020`/`$D021`; 40×25 character mode renders glyphs from an embedded open 8×8 font; foreground color read per-character from color RAM (`$D800`); screen codes `$80–$FF` render in reverse video; X/Y fine scroll applied to character grid
 - **Terminal panel** — green-on-black scrollable log with command input
 - **CPU State panel** — live register and flag display, CIA1 timer status, cycle counter
 - **Disassembler panel** (Debug menu) — live disassembly with Follow PC, Go To address, highlighted current instruction; click any row to toggle a breakpoint (red `●`); emulator halts automatically when PC hits a breakpoint
 - **Memory Viewer panel** (Debug menu) — full hex editor (imgui_memory_editor); click any byte to edit in-place, Follow PC toggle, PC highlighted in yellow, built-in data preview and column options
 - **Per-device panels** (View menu) — each chip with `hasPanel()` gets its own dockable window; CIA shows timers/ICR/TOD/ports, VIC shows raster/colours/control, SID shows voices/filter/volume; panels are listed dynamically based on what is mounted
-- **Machine Designer panel** (View menu) — interactive address map: click Start/End addresses to edit inline, drag `=` handle to reorder priority, Sort by Address, Reset to Defaults; validation highlights unreachable entries (orange) and invalid ranges (red), warns when no catch-all entry is present
+- **Machine Designer panel** (View menu) — interactive address map: click Start/End addresses to edit inline (invalid values stay red, Tab commits like Enter, clicking away persists red so you can re-enter), drag `=` handle to reorder priority, Sort by Address, Reset to Defaults; validation highlights unreachable entries (orange) and invalid ranges (red), warns when no catch-all entry is present; **Contained Devices** section lists chips embedded inside container devices (VIC/SID/CIA inside C64IOSpace) with live computed addresses
 - **ROM loading** (File → Load ROM) — native macOS file dialog; supports raw `.bin` and Commodore `.prg`; resets CPU and jumps disassembler to load address
 - **Keyboard capture** — click the Screen panel to direct keyboard input into the CIA1 matrix; green border overlay and status label indicate active capture; Escape releases
-- **Machine config save / load** (File → Save / Load Machine Config) — persists the address-space wiring as a JSON file so machines can be recalled and shared
-- **C64 preset** (File → Presets → Commodore 64) — dialog to browse for KERNAL, BASIC, and CHAR ROM images; builds the complete C64 memory map with MOS 6510 CPU, three SwitchableRegions, and full banking truth table wired to the 6510 I/O port
+- **Machine config save / load** (File → Save / Load Machine Config) — persists the address-space wiring as a JSON file so machines can be recalled and shared; `cycles_per_frame` is written/read so emulator speed is restored automatically
+- **Bundled JSON presets** (File → Load Preset) — `presets/` folder next to the executable is scanned at startup; each `.json` file appears as a submenu entry; a generic ROM picker dialog collects the required ROM images and builds the machine; C64 preset auto-sets ~1 MHz clock speed
+- **C64IOSpace as designer device** — the C64 I/O dispatcher appears in the Machine Designer Add Device dropdown (`C64 I/O Space`) so custom machines can mount it manually
 
 ### Emulator core
 - 64 KB flat RAM; reset vector points to the loaded program or the built-in NOP stub at `$0200`
-- **C64 memory map** — `Machine::buildC64Preset()` mounts KERNAL/BASIC/CHAR ROMs, creates a `C64IOSpace` dispatcher for `$D000–$DFFF`, three `SwitchableRegion`s (`$A000`, `$D000`, `$E000`), and a catch-all 64 KB RAM; the MOS 6510 I/O port `$01` drives all three regions via the C64 banking truth table (LORAM/HIRAM/CHAREN bits)
+- **C64 memory map** — `Machine::buildC64Preset()` mounts KERNAL/BASIC/CHAR ROMs, creates a `C64IOSpace` dispatcher for `$D000–$DFFF`, three `SwitchableRegion`s (`$A000`, `$D000`, `$E000`), and a catch-all 64 KB RAM; the MOS 6510 I/O port `$01` drives all three regions via the C64 banking truth table (LORAM/HIRAM/CHAREN bits); preset auto-sets ~1 MHz (16 667 cycles/frame)
+- **VIC color RAM** at `$D800–$DBFF` — 1 KB, 4 bits per cell, initialized to `$0E` (light blue); per-character foreground color read during rendering; CPU-accessible via `C64IOSpace`
+- **VIC X/Y fine scroll** — `XSCROLL` (`$D016` bits 0–2) and `YSCROLL` (`$D011` bits 0–2) shift the character grid 0–7 pixels in each axis
 - **CIA1 (MOS 6526) at `$F100–$F1FF`** — Timer A + Timer B (ϕ2 or TA-underflow count mode), full ADSR envelope, ICR mask/flags, TOD BCD clock with alarm and latch-on-read, data ports PRA/PRB; CIA1 IRQ wired to CPU IRQ line
 - **CIA2 at `$F200–$F2FF`** — same full implementation as CIA1
 - **SID6581 at `$D400–$D7FF`** — all 29 MOS 6581/8580 registers; SDL audio output at 44100 Hz; triangle/sawtooth/pulse/noise waveforms with correct 23-bit LFSR; full ADSR envelopes with datasheet-accurate timing; master volume; Machine Designer shows volume, filter cutoff, and voice 1 frequency
@@ -196,7 +199,13 @@ Device instances are owned by `Machine`.  The default map is:
 - [x] **ROM regions** — read-only `ROM` device; load `.bin`/`.prg` files via Machine Designer → Load ROM File; writes silently ignored; `.prg` header stripped automatically; address range auto-calculated from file size; config save/load persists ROM file paths
 - [x] **Bank switching (simple)** — `BankedMemory` device (N equal banks × window size); `BankSelectPort` companion I/O byte; Machine Designer → Add Banked RAM wires both in one step; config save/load persists bank layout
 - [x] **Advanced bank switching** — `SwitchableRegion` proxy device (N child devices at one address window, live bank-selector in Machine Designer); `BankController` I/O register drives multiple regions per write; foundation for C64 and Apple IIe memory maps
+- [x] **VIC color RAM** — per-character foreground color at `$D800–$DBFF`; initialized to light blue on reset; read during character rendering
+- [x] **VIC X/Y fine scroll** — `XSCROLL`/`YSCROLL` registers shift character grid 0–7 pixels
+- [x] **Emulator speed persistence** — `cycles_per_frame` saved/loaded in machine config JSON; C64 preset auto-sets ~1 MHz
+- [x] **Bundled JSON preset system** — `presets/` folder with machine definitions scanned at startup; generic ROM picker dialog; File → Load Preset submenu
+- [x] **Machine Designer: Contained Devices** — chips inside container devices (VIC/SID/CIA inside C64IOSpace) shown in their own table with live computed addresses
 - [ ] C128 MMU model (configurable bank sizes, multi-region, hardware-accurate)
+- [ ] ZX Spectrum / Z80 CPU
 
 ---
 
