@@ -1,4 +1,4 @@
-#include "Memory.h"
+#include "emulator/devices/Memory.h"
 
 Memory::Memory() {
     reset();

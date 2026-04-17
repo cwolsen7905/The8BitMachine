@@ -78,12 +78,12 @@ endif()
 set(SOURCES
     src/main.cpp
     src/gui/Application.cpp
-    src/emulator/CPU8502.cpp
-    src/emulator/CIA6526.cpp
-    src/emulator/Disassembler.cpp
-    src/emulator/Memory.cpp
-    src/emulator/Bus.cpp
-    src/emulator/Machine.cpp
+    src/emulator/core/Bus.cpp
+    src/emulator/core/Machine.cpp
+    src/emulator/cpu/CPU8502.cpp
+    src/emulator/cpu/Disassembler.cpp
+    src/emulator/devices/CIA6526.cpp
+    src/emulator/devices/Memory.cpp
 )
 
 if(APPLE)

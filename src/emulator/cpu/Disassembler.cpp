@@ -1,5 +1,5 @@
-#include "Disassembler.h"
-#include "Bus.h"
+#include "emulator/cpu/Disassembler.h"
+#include "emulator/core/Bus.h"
 
 #include <cstdio>
 

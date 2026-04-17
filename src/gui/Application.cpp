@@ -1,6 +1,6 @@
 #include "Application.h"
-#include "emulator/CIA6526.h"
-#include "emulator/Disassembler.h"
+#include "emulator/devices/CIA6526.h"
+#include "emulator/cpu/Disassembler.h"
 #include "gui/FileDialog.h"
 
 #include <fstream>

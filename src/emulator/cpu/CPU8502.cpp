@@ -1,5 +1,5 @@
-#include "CPU8502.h"
-#include "Bus.h"
+#include "emulator/cpu/CPU8502.h"
+#include "emulator/core/Bus.h"
 
 #include <iomanip>
 #include <sstream>

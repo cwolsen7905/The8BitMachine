@@ -6,7 +6,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "emulator/Machine.h"
+#include "emulator/core/Machine.h"
 
 class Application {
 public:

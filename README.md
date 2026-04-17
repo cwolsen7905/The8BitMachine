@@ -122,17 +122,20 @@ the-8-bit-machine/
     ├── main.cpp
     ├── gui/
     │   ├── Application.h / .cpp    Window, event loop, all panel rendering
-    │   ├── FileDialog.h            File-open dialog interface
-    │   └── FileDialog.mm           macOS NSOpenPanel implementation
+    │   ├── FileDialog.h            File-open / save-file dialog interface
+    │   └── FileDialog.mm           macOS NSOpenPanel / NSSavePanel implementation
     └── emulator/
-        ├── IBusDevice.h            Interface every bus device implements
-        ├── ICPU.h                  Interface every CPU implements
-        ├── Machine.h / .cpp        Owns CPU + devices; builds default address map
-        ├── Bus.h / .cpp            Dynamic address-space router
-        ├── CPU8502.h / .cpp        MOS 8502 (implements ICPU)
-        ├── CIA6526.h / .cpp        MOS 6526 CIA (implements IBusDevice)
-        ├── Memory.h / .cpp         64 KB flat RAM (implements IBusDevice)
-        └── Disassembler.h / .cpp   Stateless 6502 disassembler
+        ├── core/
+        │   ├── IBusDevice.h        Interface every bus device implements
+        │   ├── ICPU.h              Interface every CPU implements
+        │   ├── Bus.h / .cpp        Dynamic address-space router
+        │   └── Machine.h / .cpp    Owns CPU + devices; builds default address map
+        ├── cpu/
+        │   ├── CPU8502.h / .cpp    MOS 8502 (implements ICPU)
+        │   └── Disassembler.h / .cpp  Stateless 6502 disassembler
+        └── devices/
+            ├── CIA6526.h / .cpp    MOS 6526 CIA (implements IBusDevice)
+            └── Memory.h / .cpp     64 KB flat RAM (implements IBusDevice)
 ```
 
 ### How the address space works

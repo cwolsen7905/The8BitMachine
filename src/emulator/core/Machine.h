@@ -1,9 +1,9 @@
 #pragma once
 
-#include "Bus.h"
-#include "CIA6526.h"
-#include "CPU8502.h"
-#include "Memory.h"
+#include "emulator/core/Bus.h"
+#include "emulator/devices/CIA6526.h"
+#include "emulator/cpu/CPU8502.h"
+#include "emulator/devices/Memory.h"
 
 #include <functional>
 #include <string>

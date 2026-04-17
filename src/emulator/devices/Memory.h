@@ -1,6 +1,6 @@
 #pragma once
 
-#include "IBusDevice.h"
+#include "emulator/core/IBusDevice.h"
 #include <array>
 #include <cstdint>
 
