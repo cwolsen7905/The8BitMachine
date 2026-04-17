@@ -257,22 +257,25 @@ std::vector<Machine::PanelEntry> Machine::panelDevices() {
     std::vector<PanelEntry> result;
     std::unordered_set<IBusDevice*> seen;
 
-    // Fixed chips always present — include them first regardless of bus layout.
-    for (auto [label, dev] : std::initializer_list<std::pair<const char*, IBusDevice*>>{
-            {"VIC-IIe",  &vic_},
-            {"SID 6581", &sid_},
-            {"CIA1",     &cia1_},
-            {"CIA2",     &cia2_},
-        }) {
-        if (dev->hasPanel() && seen.insert(dev).second)
-            result.push_back({ label, dev });
-    }
+    // For each fixed chip, prefer the bus label (which includes the mapped
+    // address range) so the menu entry is self-describing.  Fall back to a
+    // generic name when the chip is off-bus (e.g. inside C64IOSpace).
+    auto addFixed = [&](const char* fallback, IBusDevice* dev) {
+        if (!dev->hasPanel() || !seen.insert(dev).second) return;
+        for (const auto& e : bus_.devices())
+            if (e.device == dev) { result.push_back({ e.label, dev }); return; }
+        result.push_back({ fallback, dev });
+    };
+    addFixed("VIC-IIe",  &vic_);
+    addFixed("SID 6581", &sid_);
+    addFixed("CIA1",     &cia1_);
+    addFixed("CIA2",     &cia2_);
 
-    // Dynamic devices registered on the bus (Machine Designer additions).
-    for (const auto& e : bus_.devices()) {
+    // Dynamic devices added via the Machine Designer.
+    for (const auto& e : bus_.devices())
         if (e.device && e.device->hasPanel() && seen.insert(e.device).second)
             result.push_back({ e.label, e.device });
-    }
+
     return result;
 }
 
