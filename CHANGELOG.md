@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased]
+## [0.30.0] - 2026-04-17
 
 ### Added
 - **Apple IIe preset** — `presets/apple2e.json`; ROM picker loads a 12 KB, 16 KB, or 32 KB Apple IIe ROM image; mounts 48 KB RAM at `$0000–$BFFF`, `AppleIIIO` at `$C000–$C0FF`, ROM at `$C000–$FFFF`; switches CPU to WDC 65C02; preset auto-sets ~1 MHz (17 030 cycles/frame)
