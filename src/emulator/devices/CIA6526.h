@@ -60,6 +60,11 @@ public:
     // PRB reads the AND of all selected columns' row bytes.
     // -----------------------------------------------------------------------
     void setKey(int col, int row, bool pressed);
+    bool keyState(int col, int row) const {
+        if (col < 0 || col > 7 || row < 0 || row > 7) return false;
+        return !(keyMatrix_[col] & (1 << row));
+    }
+    void clearAllKeys();
 
     // Port/DDR snapshots for debug panels (non-destructive reads)
     uint8_t portA() const { return pra_; }

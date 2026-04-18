@@ -95,12 +95,11 @@ private:
     bool showKeyDebug_ = false;
 
     // -----------------------------------------------------------------------
-    // Keyboard debug state
+    // Keyboard debug state (C64 matrix panel)
     // -----------------------------------------------------------------------
     std::string lastKeyName_;
     int         lastKeyCol_ = -1;
     int         lastKeyRow_ = -1;
-    std::unordered_set<int> pressedMatrixKeys_;   // encoded as col*8+row
 
     // When true, col and row are swapped before calling setKey — required for
     // MEGA65 OpenROMs which wire PA=rows/PB=cols (opposite of stock C64 KERNAL).

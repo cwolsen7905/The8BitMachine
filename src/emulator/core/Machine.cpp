@@ -1,4 +1,5 @@
 #include "emulator/core/Machine.h"
+#include <SDL.h>
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <sstream>
@@ -102,6 +103,81 @@ MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
 
     activeFixedDevices_ = { &vic_, &sid_, &cia1_, &cia2_ };
 
+    // Wire keyboard: SDL keycodes → CIA1 matrix (col=PA bit, row=PB bit).
+    // keyMatrixTranspose swaps col/row for MEGA65 OpenROMs (PA=rows, PB=cols).
+    clearKeysHandler_ = [this]() { cia1_.clearAllKeys(); };
+    keyHandler_ = [this, keyMatrixTranspose](int sym, bool pressed) {
+        int col = -1, row = -1;
+        switch (sym) {
+            case SDLK_DELETE:
+            case SDLK_BACKSPACE: col=0; row=0; break;
+            case SDLK_3:         col=0; row=1; break;
+            case SDLK_5:         col=0; row=2; break;
+            case SDLK_7:         col=0; row=3; break;
+            case SDLK_9:         col=0; row=4; break;
+            case SDLK_KP_PLUS:   col=0; row=5; break;
+            case SDLK_1:         col=0; row=7; break;
+            case SDLK_RETURN:    col=1; row=0; break;
+            case SDLK_w:         col=1; row=1; break;
+            case SDLK_r:         col=1; row=2; break;
+            case SDLK_y:         col=1; row=3; break;
+            case SDLK_i:         col=1; row=4; break;
+            case SDLK_p:         col=1; row=5; break;
+            case SDLK_KP_MULTIPLY: col=1; row=6; break;
+            case SDLK_BACKQUOTE: col=1; row=7; break;
+            case SDLK_DOWN:      col=2; row=0; break;
+            case SDLK_a:         col=2; row=1; break;
+            case SDLK_d:         col=2; row=2; break;
+            case SDLK_g:         col=2; row=3; break;
+            case SDLK_j:         col=2; row=4; break;
+            case SDLK_l:         col=2; row=5; break;
+            case SDLK_SEMICOLON: col=2; row=6; break;
+            case SDLK_LCTRL:     col=2; row=7; break;
+            case SDLK_F7:        col=3; row=0; break;
+            case SDLK_4:         col=3; row=1; break;
+            case SDLK_6:         col=3; row=2; break;
+            case SDLK_8:         col=3; row=3; break;
+            case SDLK_0:         col=3; row=4; break;
+            case SDLK_MINUS:     col=3; row=5; break;
+            case SDLK_HOME:      col=3; row=6; break;
+            case SDLK_2:         col=3; row=7; break;
+            case SDLK_F1:        col=4; row=0; break;
+            case SDLK_z:         col=4; row=1; break;
+            case SDLK_c:         col=4; row=2; break;
+            case SDLK_b:         col=4; row=3; break;
+            case SDLK_m:         col=4; row=4; break;
+            case SDLK_PERIOD:    col=4; row=5; break;
+            case SDLK_SPACE:     col=4; row=7; break;
+            case SDLK_F3:        col=5; row=0; break;
+            case SDLK_s:         col=5; row=1; break;
+            case SDLK_f:         col=5; row=2; break;
+            case SDLK_h:         col=5; row=3; break;
+            case SDLK_k:         col=5; row=4; break;
+            case SDLK_EQUALS:    col=5; row=6; break;
+            case SDLK_LALT:      col=5; row=7; break;
+            case SDLK_F5:        col=6; row=0; break;
+            case SDLK_e:         col=6; row=1; break;
+            case SDLK_t:         col=6; row=2; break;
+            case SDLK_u:         col=6; row=3; break;
+            case SDLK_o:         col=6; row=4; break;
+            case SDLK_q:         col=6; row=7; break;
+            case SDLK_RIGHT:     col=7; row=0; break;
+            case SDLK_LSHIFT:
+            case SDLK_RSHIFT:    col=7; row=1; break;
+            case SDLK_x:         col=7; row=2; break;
+            case SDLK_v:         col=7; row=3; break;
+            case SDLK_n:         col=7; row=4; break;
+            case SDLK_COMMA:     col=7; row=5; break;
+            case SDLK_SLASH:     col=7; row=6; break;
+            default: break;
+        }
+        if (col >= 0) {
+            int ciaCol = col, ciaRow = row;
+            if (keyMatrixTranspose) std::swap(ciaCol, ciaRow);
+            cia1_.setKey(ciaCol, ciaRow, pressed);
+        }
+    };
+
     // Record preset so saveConfig can serialise it instead of the device list.
     hasPreset_ = true;
     preset_    = { "c64", kernalPath, basicPath, charPath, keyMatrixTranspose };
@@ -130,6 +206,8 @@ void Machine::resetAddressMap() {
     hasPreset_ = false;
     activeScreen_ = { VIC6566::WIDTH, VIC6566::HEIGHT, vic_.framebuffer() };
     activeCpu_ = &cpu8502_;
+    keyHandler_       = nullptr;
+    clearKeysHandler_ = nullptr;
     buildDefaultMap();
 }
 
@@ -254,6 +332,62 @@ MachineConfigResult Machine::buildSpectrumPreset(const std::string& romPath) {
 
     activeFixedDevices_ = { &ula_ };
 
+    // Wire keyboard: SDL keycodes → ULA 8×5 matrix (active-low, 0=pressed).
+    clearKeysHandler_ = [this]() { ula_.clearAllKeys(); };
+    keyHandler_ = [this](int sym, bool pressed) {
+        int row = -1, bit = -1;
+        switch (sym) {
+            case SDLK_b:                    row=0; bit=0; break;
+            case SDLK_n:                    row=0; bit=1; break;
+            case SDLK_m:                    row=0; bit=2; break;
+            case SDLK_LCTRL: case SDLK_RCTRL: row=0; bit=3; break;  // Sym Shift
+            case SDLK_SPACE:                row=0; bit=4; break;
+            case SDLK_h:                    row=1; bit=0; break;
+            case SDLK_j:                    row=1; bit=1; break;
+            case SDLK_k:                    row=1; bit=2; break;
+            case SDLK_l:                    row=1; bit=3; break;
+            case SDLK_RETURN:               row=1; bit=4; break;
+            case SDLK_y:                    row=2; bit=0; break;
+            case SDLK_u:                    row=2; bit=1; break;
+            case SDLK_i:                    row=2; bit=2; break;
+            case SDLK_o:                    row=2; bit=3; break;
+            case SDLK_p:                    row=2; bit=4; break;
+            case SDLK_6:                    row=3; bit=0; break;
+            case SDLK_7:                    row=3; bit=1; break;
+            case SDLK_8:                    row=3; bit=2; break;
+            case SDLK_9:                    row=3; bit=3; break;
+            case SDLK_0:                    row=3; bit=4; break;
+            case SDLK_5:                    row=4; bit=0; break;
+            case SDLK_4:                    row=4; bit=1; break;
+            case SDLK_3:                    row=4; bit=2; break;
+            case SDLK_2:                    row=4; bit=3; break;
+            case SDLK_1:                    row=4; bit=4; break;
+            case SDLK_t:                    row=5; bit=0; break;
+            case SDLK_r:                    row=5; bit=1; break;
+            case SDLK_e:                    row=5; bit=2; break;
+            case SDLK_w:                    row=5; bit=3; break;
+            case SDLK_q:                    row=5; bit=4; break;
+            case SDLK_g:                    row=6; bit=0; break;
+            case SDLK_f:                    row=6; bit=1; break;
+            case SDLK_d:                    row=6; bit=2; break;
+            case SDLK_s:                    row=6; bit=3; break;
+            case SDLK_a:                    row=6; bit=4; break;
+            case SDLK_v:                    row=7; bit=0; break;
+            case SDLK_c:                    row=7; bit=1; break;
+            case SDLK_x:                    row=7; bit=2; break;
+            case SDLK_z:                    row=7; bit=3; break;
+            case SDLK_LSHIFT: case SDLK_RSHIFT: row=7; bit=4; break;  // Caps Shift
+            // Cursor keys → Caps Shift + digit combos
+            case SDLK_LEFT:   ula_.setKey(7,4,pressed); row=3; bit=4; break;
+            case SDLK_RIGHT:  ula_.setKey(7,4,pressed); row=3; bit=2; break;
+            case SDLK_DOWN:   ula_.setKey(7,4,pressed); row=3; bit=1; break;
+            case SDLK_UP:     ula_.setKey(7,4,pressed); row=3; bit=0; break;
+            case SDLK_BACKSPACE: ula_.setKey(7,4,pressed); row=3; bit=4; break;
+            default: break;
+        }
+        if (row >= 0) ula_.setKey(row, bit, pressed);
+    };
+
     // Point the active screen at the ULA framebuffer
     activeScreen_ = { ULA::WIDTH, ULA::HEIGHT, ula_.framebuffer() };
 
@@ -263,6 +397,9 @@ MachineConfigResult Machine::buildSpectrumPreset(const std::string& romPath) {
 
     return { true, "Spectrum 48K preset built." };
 }
+
+void Machine::keyEvent(int sym, bool pressed) { if (keyHandler_) keyHandler_(sym, pressed); }
+void Machine::clearKeys()                     { if (clearKeysHandler_) clearKeysHandler_(); }
 
 void Machine::reset() {
     for (IBusDevice* dev : activeFixedDevices_) dev->reset();

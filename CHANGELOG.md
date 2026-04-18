@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.28.0] - 2026-04-17
+
+### Added
+- **Preset-owned keyboard routing** — each preset builder sets a `keyHandler_` lambda in `Machine`; `Machine::keyEvent(sym, pressed)` dispatches to the active machine's hardware; `Machine::clearKeys()` releases all held keys; C64 keyboard mapping (with transpose support) and Spectrum ULA mapping moved out of Application into their respective preset builders
+- **`CIA6526::keyState(col, row)`** — non-destructive read of the CIA key matrix; used by the Keyboard Matrix debug panel to show held keys without Application tracking them separately
+- **`CIA6526::clearAllKeys()`** — resets all matrix bits to 0xFF (all released)
+
+### Changed
+- `Application` keyboard event handler reduced to two lines — `machine_.keyEvent(sym, pressed)` for captured keys, `machine_.clearKeys()` on Escape; no longer contains any machine-specific key mapping
+- Keyboard Matrix debug panel reads live CIA1 state via `keyState()` instead of maintaining a separate `pressedMatrixKeys_` set
+
+### Removed
+- `pressedMatrixKeys_` from `Application` — superseded by direct CIA1 state reads
+
+---
+
 ## [0.27.0] - 2026-04-17
 
 ### Added

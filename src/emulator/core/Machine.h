@@ -94,6 +94,15 @@ public:
     void clock();
 
     // -----------------------------------------------------------------------
+    // Keyboard — route SDL key events to the active machine's keyboard hardware.
+    // Set by each preset builder via keyHandler_ / clearKeysHandler_.
+    // No-op when no keyboard is wired (generic machine or unknown preset).
+    // -----------------------------------------------------------------------
+    // sym is SDL_Keycode (int32_t) — passed as int to keep core SDL-free
+    void keyEvent(int sym, bool pressed);
+    void clearKeys();
+
+    // -----------------------------------------------------------------------
     // Wiring
     // -----------------------------------------------------------------------
     void setCharOutCallback(std::function<void(uint8_t)> cb);
@@ -211,4 +220,9 @@ private:
     // Fixed devices that are active in the current preset — clocked, reset,
     // and shown in panelDevices().  Set by each preset builder / buildDefaultMap.
     std::vector<IBusDevice*> activeFixedDevices_;
+
+    // Keyboard routing — set by each preset builder to route SDL key events
+    // (sym = SDL_Keycode cast to int) to the appropriate hardware chip.
+    std::function<void(int sym, bool pressed)> keyHandler_;
+    std::function<void()>                      clearKeysHandler_;
 };

@@ -1,5 +1,6 @@
 #include "emulator/devices/CIA6526.h"
 #include <imgui.h>
+#include <cstring>
 #include <sstream>
 #include <iomanip>
 
@@ -11,6 +12,10 @@ void CIA6526::setKey(int col, int row, bool pressed) {
     if (col < 0 || col > 7 || row < 0 || row > 7) return;
     if (pressed) keyMatrix_[col] &= ~static_cast<uint8_t>(1 << row);
     else         keyMatrix_[col] |=  static_cast<uint8_t>(1 << row);
+}
+
+void CIA6526::clearAllKeys() {
+    std::memset(keyMatrix_, 0xFF, sizeof(keyMatrix_));
 }
 
 // ---------------------------------------------------------------------------

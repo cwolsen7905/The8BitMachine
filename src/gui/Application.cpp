@@ -234,171 +234,10 @@ void Application::processEvents() {
             // Route to the active machine's keyboard matrix when screen has focus
             if (keyboardCaptured_) {
                 if (sym == SDLK_ESCAPE) {
-                    if (pressed) keyboardCaptured_ = false;
-                } else if (machine_.screenInfo().pixels == machine_.ula().framebuffer()) {
-                    // ---- ZX Spectrum keyboard (ULA) ----
-                    // Matrix: 8 rows × 5 bits (active-low).
-                    // Row selected by address line (A8-A15 = 0); bit 0 = innermost key.
-                    int specRow = -1, specBit = -1;
-                    switch (sym) {
-                        // Row 0 (A8=0): B N M SymShift Space
-                        case SDLK_b:                    specRow=0; specBit=0; break;
-                        case SDLK_n:                    specRow=0; specBit=1; break;
-                        case SDLK_m:                    specRow=0; specBit=2; break;
-                        case SDLK_LCTRL:
-                        case SDLK_RCTRL:                specRow=0; specBit=3; break;  // Sym Shift
-                        case SDLK_SPACE:                specRow=0; specBit=4; break;
-                        // Row 1 (A9=0): H J K L Enter
-                        case SDLK_h:                    specRow=1; specBit=0; break;
-                        case SDLK_j:                    specRow=1; specBit=1; break;
-                        case SDLK_k:                    specRow=1; specBit=2; break;
-                        case SDLK_l:                    specRow=1; specBit=3; break;
-                        case SDLK_RETURN:               specRow=1; specBit=4; break;
-                        // Row 2 (A10=0): Y U I O P
-                        case SDLK_y:                    specRow=2; specBit=0; break;
-                        case SDLK_u:                    specRow=2; specBit=1; break;
-                        case SDLK_i:                    specRow=2; specBit=2; break;
-                        case SDLK_o:                    specRow=2; specBit=3; break;
-                        case SDLK_p:                    specRow=2; specBit=4; break;
-                        // Row 3 (A11=0): 6 7 8 9 0
-                        case SDLK_6:                    specRow=3; specBit=0; break;
-                        case SDLK_7:                    specRow=3; specBit=1; break;
-                        case SDLK_8:                    specRow=3; specBit=2; break;
-                        case SDLK_9:                    specRow=3; specBit=3; break;
-                        case SDLK_0:                    specRow=3; specBit=4; break;
-                        // Row 4 (A12=0): 5 4 3 2 1
-                        case SDLK_5:                    specRow=4; specBit=0; break;
-                        case SDLK_4:                    specRow=4; specBit=1; break;
-                        case SDLK_3:                    specRow=4; specBit=2; break;
-                        case SDLK_2:                    specRow=4; specBit=3; break;
-                        case SDLK_1:                    specRow=4; specBit=4; break;
-                        // Row 5 (A13=0): T R E W Q
-                        case SDLK_t:                    specRow=5; specBit=0; break;
-                        case SDLK_r:                    specRow=5; specBit=1; break;
-                        case SDLK_e:                    specRow=5; specBit=2; break;
-                        case SDLK_w:                    specRow=5; specBit=3; break;
-                        case SDLK_q:                    specRow=5; specBit=4; break;
-                        // Row 6 (A14=0): G F D S A
-                        case SDLK_g:                    specRow=6; specBit=0; break;
-                        case SDLK_f:                    specRow=6; specBit=1; break;
-                        case SDLK_d:                    specRow=6; specBit=2; break;
-                        case SDLK_s:                    specRow=6; specBit=3; break;
-                        case SDLK_a:                    specRow=6; specBit=4; break;
-                        // Row 7 (A15=0): V C X Z CapsShift
-                        case SDLK_v:                    specRow=7; specBit=0; break;
-                        case SDLK_c:                    specRow=7; specBit=1; break;
-                        case SDLK_x:                    specRow=7; specBit=2; break;
-                        case SDLK_z:                    specRow=7; specBit=3; break;
-                        case SDLK_LSHIFT:
-                        case SDLK_RSHIFT:               specRow=7; specBit=4; break;  // Caps Shift
-                        // Cursor keys → Caps+5/6/7/8 combos (common Spectrum idiom)
-                        case SDLK_LEFT:   machine_.ula().setKey(7,4,pressed);
-                                          specRow=3; specBit=4; break;  // Caps+0 = DELETE
-                        case SDLK_RIGHT:  machine_.ula().setKey(7,4,pressed);
-                                          specRow=3; specBit=2; break;  // Caps+8
-                        case SDLK_DOWN:   machine_.ula().setKey(7,4,pressed);
-                                          specRow=3; specBit=1; break;  // Caps+7
-                        case SDLK_UP:     machine_.ula().setKey(7,4,pressed);
-                                          specRow=3; specBit=0; break;  // Caps+6
-                        case SDLK_BACKSPACE: machine_.ula().setKey(7,4,pressed);
-                                          specRow=3; specBit=4; break;  // Caps+0 = DELETE
-                        default: break;
-                    }
-                    if (specRow >= 0)
-                        machine_.ula().setKey(specRow, specBit, pressed);
+                    if (pressed) { keyboardCaptured_ = false; machine_.clearKeys(); }
                 } else {
-                    // ---- C64 keyboard matrix (CIA1) ----
-                    // PA bit = col, PB bit = row (active-low).
-                    int col = -1, row = -1;
-                    switch (sym) {
-                        // Standard C64 matrix: col = PA bit, row = PB bit.
-                        // keyMatrixTranspose_ swaps these before CIA delivery for MEGA65 ROMs.
-                        case SDLK_DELETE:
-                        case SDLK_BACKSPACE: col=0; row=0; break;  // DEL
-                        case SDLK_3:         col=0; row=1; break;
-                        case SDLK_5:         col=0; row=2; break;
-                        case SDLK_7:         col=0; row=3; break;
-                        case SDLK_9:         col=0; row=4; break;
-                        case SDLK_KP_PLUS:   col=0; row=5; break;  // +
-                        // row 6 = £ — no standard PC key
-                        case SDLK_1:         col=0; row=7; break;
-                        case SDLK_RETURN:    col=1; row=0; break;
-                        case SDLK_w:         col=1; row=1; break;
-                        case SDLK_r:         col=1; row=2; break;
-                        case SDLK_y:         col=1; row=3; break;
-                        case SDLK_i:         col=1; row=4; break;
-                        case SDLK_p:         col=1; row=5; break;
-                        case SDLK_KP_MULTIPLY: col=1; row=6; break;  // *
-                        case SDLK_BACKQUOTE: col=1; row=7; break;  // ←
-                        case SDLK_DOWN:      col=2; row=0; break;  // CUR↓
-                        case SDLK_a:         col=2; row=1; break;
-                        case SDLK_d:         col=2; row=2; break;
-                        case SDLK_g:         col=2; row=3; break;
-                        case SDLK_j:         col=2; row=4; break;
-                        case SDLK_l:         col=2; row=5; break;
-                        case SDLK_SEMICOLON: col=2; row=6; break;
-                        case SDLK_LCTRL:     col=2; row=7; break;
-                        case SDLK_F7:        col=3; row=0; break;
-                        case SDLK_4:         col=3; row=1; break;
-                        case SDLK_6:         col=3; row=2; break;
-                        case SDLK_8:         col=3; row=3; break;
-                        case SDLK_0:         col=3; row=4; break;
-                        case SDLK_MINUS:     col=3; row=5; break;
-                        case SDLK_HOME:      col=3; row=6; break;
-                        case SDLK_2:         col=3; row=7; break;
-                        case SDLK_F1:        col=4; row=0; break;
-                        case SDLK_z:         col=4; row=1; break;
-                        case SDLK_c:         col=4; row=2; break;
-                        case SDLK_b:         col=4; row=3; break;
-                        case SDLK_m:         col=4; row=4; break;
-                        case SDLK_PERIOD:    col=4; row=5; break;
-                        // row 6 = ^ — no standard PC key
-                        case SDLK_SPACE:     col=4; row=7; break;
-                        case SDLK_F3:        col=5; row=0; break;
-                        case SDLK_s:         col=5; row=1; break;
-                        case SDLK_f:         col=5; row=2; break;
-                        case SDLK_h:         col=5; row=3; break;
-                        case SDLK_k:         col=5; row=4; break;
-                        // row 5 = : — skip (needs shift+semicolon)
-                        case SDLK_EQUALS:    col=5; row=6; break;  // =
-                        case SDLK_LALT:      col=5; row=7; break;  // Commodore key
-                        case SDLK_F5:        col=6; row=0; break;
-                        case SDLK_e:         col=6; row=1; break;
-                        case SDLK_t:         col=6; row=2; break;
-                        case SDLK_u:         col=6; row=3; break;
-                        case SDLK_o:         col=6; row=4; break;
-                        // row 5 = @, row 6 = ↑ — no standard PC keys
-                        case SDLK_q:         col=6; row=7; break;
-                        case SDLK_RIGHT:     col=7; row=0; break;  // CUR→
-                        case SDLK_LSHIFT:    col=7; row=1; break;
-                        case SDLK_RSHIFT:    col=7; row=1; break;
-                        case SDLK_x:         col=7; row=2; break;
-                        case SDLK_v:         col=7; row=3; break;
-                        case SDLK_n:         col=7; row=4; break;
-                        case SDLK_COMMA:     col=7; row=5; break;
-                        case SDLK_SLASH:     col=7; row=6; break;
-                        // row 7 = RUN/STOP — ESCAPE releases capture, skip
-                        default: break;
-                    }
-                    if (col >= 0) {
-                        int ciaCol = col, ciaRow = row;
-                        if (keyMatrixTranspose_) std::swap(ciaCol, ciaRow);
-                        machine_.cia1().setKey(ciaCol, ciaRow, pressed);
-                        const int encoded = col * 8 + row;
-                        if (pressed) {
-                            lastKeyName_ = SDL_GetKeyName(sym);
-                            lastKeyCol_  = col;
-                            lastKeyRow_  = row;
-                            pressedMatrixKeys_.insert(encoded);
-                        } else {
-                            pressedMatrixKeys_.erase(encoded);
-                        }
-                    } else if (pressed) {
-                        lastKeyName_ = SDL_GetKeyName(sym);
-                        lastKeyCol_  = -1;
-                        lastKeyRow_  = -1;
-                    }
-                }  // end C64 branch
+                    machine_.keyEvent(sym, pressed);
+                }
             }
         }
     }
@@ -1555,7 +1394,7 @@ void Application::drawKeyboardDebug() {
         ImGui::TextDisabled("Row%d ", row);
         for (int col = 0; col < 8; ++col) {
             ImGui::SameLine();
-            const bool held = pressedMatrixKeys_.count(col * 8 + row) > 0;
+            const bool held = machine_.cia1().keyState(col, row);
             const bool isLast = (lastKeyCol_ == col && lastKeyRow_ == row);
 
             ImVec4 bg  = held    ? ImVec4(0.1f, 0.7f, 0.2f, 0.6f)
@@ -1578,7 +1417,6 @@ void Application::drawKeyboardDebug() {
                 int ciaCol = col, ciaRow = row;
                 if (keyMatrixTranspose_) std::swap(ciaCol, ciaRow);
                 machine_.cia1().setKey(ciaCol, ciaRow, true);
-                pressedMatrixKeys_.insert(col * 8 + row);
                 lastKeyCol_  = col;
                 lastKeyRow_  = row;
                 lastKeyName_ = kLabel[col][row];
@@ -1587,7 +1425,6 @@ void Application::drawKeyboardDebug() {
                 int ciaCol = col, ciaRow = row;
                 if (keyMatrixTranspose_) std::swap(ciaCol, ciaRow);
                 machine_.cia1().setKey(ciaCol, ciaRow, false);
-                pressedMatrixKeys_.erase(col * 8 + row);
             }
 
             if (ImGui::IsItemHovered())
