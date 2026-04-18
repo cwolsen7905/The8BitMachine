@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased]
+## [0.30.0] - 2026-04-18
 
 ### Added
 - **Memory viewer region color-coding** — ROM regions shown with amber tint, I/O devices (CIA, VIC, SID, ULA, etc.) with blue tint, RAM uncolored; legend bar shows ROM / I/O / PC swatches; colors rebuilt automatically on preset load and New Machine

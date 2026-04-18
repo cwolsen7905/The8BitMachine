@@ -127,8 +127,8 @@ if(APPLE)
         MACOSX_BUNDLE_INFO_PLIST           "${CMAKE_SOURCE_DIR}/Info.plist.in"
         MACOSX_BUNDLE_BUNDLE_NAME          "The 8-Bit Machine"
         MACOSX_BUNDLE_GUI_IDENTIFIER       "com.the8bitmachine.app"
-        MACOSX_BUNDLE_BUNDLE_VERSION       "0.29.0"
-        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.29.0"
+        MACOSX_BUNDLE_BUNDLE_VERSION       "0.30.0"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.30.0"
     )
 else()
     add_executable(${PROJECT_NAME} ${SOURCES})
