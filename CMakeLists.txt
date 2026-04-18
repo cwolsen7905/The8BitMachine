@@ -170,40 +170,70 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMENT "Copying assets/ to resources"
 )
 
-if(CA65_EXE AND LD65_EXE)
-    file(GLOB ROM_SOURCES "${CMAKE_SOURCE_DIR}/roms/*.s")
-    set(ROM_PRGS)
+set(ROM_PRGS)
 
-    foreach(ASM_SRC ${ROM_SOURCES})
+# ---------------------------------------------------------------------------
+# 6502 ROMs  (ca65 + ld65)
+# ---------------------------------------------------------------------------
+if(CA65_EXE AND LD65_EXE)
+    file(GLOB ROM_SOURCES_6502 "${CMAKE_SOURCE_DIR}/roms/6502/*.s")
+
+    foreach(ASM_SRC ${ROM_SOURCES_6502})
         get_filename_component(BASE ${ASM_SRC} NAME_WE)
-        set(ROM_CFG "${CMAKE_SOURCE_DIR}/roms/${BASE}.cfg")
+        set(ROM_CFG "${CMAKE_SOURCE_DIR}/roms/6502/${BASE}.cfg")
 
         if(NOT EXISTS "${ROM_CFG}")
             continue()
         endif()
 
-        set(ROM_OBJ "${CMAKE_BINARY_DIR}/roms/${BASE}.o")
-        set(ROM_RAW "${CMAKE_BINARY_DIR}/roms/${BASE}.raw")
-        set(ROM_PRG "${CMAKE_SOURCE_DIR}/roms/${BASE}.prg")
+        set(ROM_OBJ "${CMAKE_BINARY_DIR}/roms/6502/${BASE}.o")
+        set(ROM_RAW "${CMAKE_BINARY_DIR}/roms/6502/${BASE}.raw")
+        set(ROM_PRG "${CMAKE_SOURCE_DIR}/roms/6502/${BASE}.prg")
 
         add_custom_command(
             OUTPUT  "${ROM_PRG}"
-            COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/roms"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/roms/6502"
             COMMAND ${CA65_EXE} -o "${ROM_OBJ}" "${ASM_SRC}"
             COMMAND ${LD65_EXE} -C "${ROM_CFG}" -o "${ROM_RAW}" "${ROM_OBJ}"
-            COMMAND sh -c "{ printf '\\x00\\x02'; cat '${ROM_RAW}'; } > '${ROM_PRG}'"
+            COMMAND python3 "${CMAKE_SOURCE_DIR}/cmake/prepend_prg.py" "00" "02" "${ROM_RAW}" "${ROM_PRG}"
             DEPENDS "${ASM_SRC}" "${ROM_CFG}"
-            COMMENT "Assembling ${BASE}.s"
+            COMMENT "Assembling 6502/${BASE}.s"
         )
 
         list(APPEND ROM_PRGS "${ROM_PRG}")
     endforeach()
-
-    add_custom_target(roms DEPENDS ${ROM_PRGS}
-        COMMENT "All ROMs assembled"
-    )
 else()
-    add_custom_target(roms
-        COMMAND ${CMAKE_COMMAND} -E echo "ca65/ld65 not found — install with: brew install cc65"
-    )
+    message(STATUS "ca65/ld65 not found — 6502 ROMs will not be assembled (brew install cc65)")
 endif()
+
+# ---------------------------------------------------------------------------
+# Z80 ROMs  (z80asm)
+# ---------------------------------------------------------------------------
+find_program(Z80ASM_EXE z80asm)
+
+if(Z80ASM_EXE)
+    file(GLOB ROM_SOURCES_Z80 "${CMAKE_SOURCE_DIR}/roms/z80/*.s")
+
+    foreach(ASM_SRC ${ROM_SOURCES_Z80})
+        get_filename_component(BASE ${ASM_SRC} NAME_WE)
+        set(ROM_BIN "${CMAKE_BINARY_DIR}/roms/z80/${BASE}.bin")
+        set(ROM_PRG "${CMAKE_SOURCE_DIR}/roms/z80/${BASE}.prg")
+
+        add_custom_command(
+            OUTPUT  "${ROM_PRG}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/roms/z80"
+            COMMAND ${Z80ASM_EXE} -o "${ROM_BIN}" "${ASM_SRC}"
+            COMMAND python3 "${CMAKE_SOURCE_DIR}/cmake/prepend_prg.py" "00" "00" "${ROM_BIN}" "${ROM_PRG}"
+            DEPENDS "${ASM_SRC}"
+            COMMENT "Assembling z80/${BASE}.s"
+        )
+
+        list(APPEND ROM_PRGS "${ROM_PRG}")
+    endforeach()
+else()
+    message(STATUS "z80asm not found — Z80 ROMs will not be assembled (brew install z80asm)")
+endif()
+
+add_custom_target(roms DEPENDS ${ROM_PRGS}
+    COMMENT "All ROMs assembled"
+)
