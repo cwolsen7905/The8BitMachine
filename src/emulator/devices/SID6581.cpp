@@ -164,9 +164,13 @@ float SID6581::synthVoice(int v, uint8_t ctrl, uint16_t pw,
 
 void SID6581::generateSamples(float* out, int frames, float sampleRate) {
     uint8_t regs[NUM_REGS];
+    bool    muted[3];
     {
         std::lock_guard<std::mutex> lock(mutex_);
         std::memcpy(regs, regs_, NUM_REGS);
+        muted[0] = mutedVoice_[0];
+        muted[1] = mutedVoice_[1];
+        muted[2] = mutedVoice_[2];
     }
 
     // --- Global registers ---
@@ -230,6 +234,10 @@ void SID6581::generateSamples(float* out, int frames, float sampleRate) {
                                      prev[v], prev[kSyncSrc[v]]);
         }
 
+        // Apply per-voice mute
+        for (int v = 0; v < 3; ++v)
+            if (muted[v]) voiceOut[v] = 0.0f;
+
         // Update OSC3 / ENV3 read-back registers
         osc3Out_.store(static_cast<uint8_t>(osc_[2].phase >> 16));
         env3Out_.store(static_cast<uint8_t>(osc_[2].envLevel * 255.0f));
@@ -281,9 +289,26 @@ void SID6581::drawPanel(const char* title, bool* open) {
                                                 "PUL","T+P","S+P","T+S+P","NOI" };
 
     for (int v = 0; v < 3; ++v) {
-        char hdr[16];
-        std::snprintf(hdr, sizeof(hdr), "Voice %d", v + 1);
-        if (!ImGui::CollapsingHeader(hdr, ImGuiTreeNodeFlags_DefaultOpen)) continue;
+        ImGui::PushID(v);
+        char hdr[20];
+        bool muted;
+        { std::lock_guard<std::mutex> lock(mutex_); muted = mutedVoice_[v]; }
+        std::snprintf(hdr, sizeof(hdr), muted ? "Voice %d  [MUTED]" : "Voice %d", v + 1);
+        bool open = ImGui::CollapsingHeader(hdr, ImGuiTreeNodeFlags_DefaultOpen);
+        ImGui::PopID();
+        if (!open) continue;
+
+        ImGui::PushID(v);
+        { // Mute toggle
+            bool m;
+            { std::lock_guard<std::mutex> lock(mutex_); m = mutedVoice_[v]; }
+            if (m) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.15f, 0.15f, 1.0f));
+            if (ImGui::SmallButton(m ? "Unmute" : "Mute")) {
+                std::lock_guard<std::mutex> lock(mutex_);
+                mutedVoice_[v] = !mutedVoice_[v];
+            }
+            if (m) ImGui::PopStyleColor();
+        }
 
         const int  b    = vBase[v];
         const uint16_t freq = static_cast<uint16_t>(r[b+1]) << 8 | r[b];
@@ -318,6 +343,7 @@ void SID6581::drawPanel(const char* title, bool* open) {
         ImGui::SameLine();
         if (ctrl & 0x04) ImGui::TextColored({1,0.8f,0.2f,1}, "RING");
         else             ImGui::TextDisabled("RING");
+        ImGui::PopID();
     }
 
     if (ImGui::CollapsingHeader("Filter / Volume", ImGuiTreeNodeFlags_DefaultOpen)) {

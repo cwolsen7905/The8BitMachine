@@ -132,7 +132,8 @@ private:
     std::atomic<uint8_t> osc3Out_{0};
     std::atomic<uint8_t> env3Out_{0};
 
-    mutable std::mutex mutex_;  // protects regs_[]
+    mutable std::mutex mutex_;  // protects regs_[] and mutedVoice_[]
+    bool mutedVoice_[3] = {};
 
     static const float kAttackMs[16];
     static const float kDecRelMs[16];
