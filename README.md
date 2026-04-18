@@ -1,5 +1,9 @@
 # The 8-Bit Machine
 
+<p align="center">
+  <img src="assets/icon.png" width="160" alt="The 8-Bit Machine logo">
+</p>
+
 A general-purpose **8-bit machine designer** written in C++17.
 
 Design your own 8-bit computer: pick a CPU architecture, add components (RAM, timers, I/O ports, …), and wire them into the address space — all at runtime, with a live debugger watching every cycle.
