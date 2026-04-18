@@ -177,9 +177,11 @@ void VIC6566::drawPanel(const char* title, bool* open) {
 
     if (ImGui::CollapsingHeader("Colours", ImGuiTreeNodeFlags_DefaultOpen)) {
         auto row = [&](const char* label, uint8_t regIdx) {
+            ImGui::PushID(regIdx);
             ImGui::Text("%-10s $%X  ", label, (unsigned)(reg_[regIdx] & 0x0F));
             ImGui::SameLine();
             swatch(reg_[regIdx] & 0x0F);
+            ImGui::PopID();
         };
         row("Border",  REG_BORDC);
         row("BG0",     REG_BG0);
