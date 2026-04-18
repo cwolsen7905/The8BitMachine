@@ -192,6 +192,7 @@ private:
     void saveMachineConfigDialog();
     void loadMachineConfigDialog();
     void scanPresets();
+    std::string sessionFilePath() const;
     void drawPresetDialog();
     void buildActivePreset();
     void injectC64KeyMatrix(const char* title, bool* open);

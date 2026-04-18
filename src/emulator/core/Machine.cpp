@@ -365,6 +365,12 @@ void Machine::unmountAt(size_t busIndex) {
             [dev](const auto& p) { return p.get() == dev; });
         if (it != dynamicDevices_.end())
             dynamicDevices_.erase(it);
+
+        // Also remove from fixed-device panel list so it doesn't appear
+        // as a "contained device" after being explicitly removed.
+        auto fit = std::find(activeFixedDevices_.begin(), activeFixedDevices_.end(), dev);
+        if (fit != activeFixedDevices_.end())
+            activeFixedDevices_.erase(fit);
     }
 }
 

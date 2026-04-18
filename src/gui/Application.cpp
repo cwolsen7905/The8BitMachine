@@ -179,6 +179,23 @@ bool Application::init() {
     emulatorReset();
     scanPresets();
 
+    // Restore last session if one was saved
+    {
+        const std::string sessionPath = sessionFilePath();
+        if (!sessionPath.empty()) {
+            const auto result = machine_.loadConfig(sessionPath);
+            if (result.ok) {
+                if (result.hasPreset)
+                    keyMatrixTranspose_ = result.keyMatrixTranspose;
+                else
+                    machine_.reset();
+                if (result.cyclesPerFrame > 0)
+                    cyclesPerFrame_ = result.cyclesPerFrame;
+                cycleCount_ = 0;
+            }
+        }
+    }
+
     running_ = true;
     return true;
 }
@@ -205,6 +222,11 @@ void Application::run() {
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         SDL_GL_SwapWindow(window_);
     }
+
+    // Save session on clean exit
+    const std::string sessionPath = sessionFilePath();
+    if (!sessionPath.empty())
+        machine_.saveConfig(sessionPath, cyclesPerFrame_);
 }
 
 // ---------------------------------------------------------------------------
@@ -452,9 +474,20 @@ void Application::drawMenuBar() {
 // ---------------------------------------------------------------------------
 
 void Application::drawScreen() {
-    ImGui::Begin("Screen", &showScreen_);
-
     auto info = machine_.screenInfo();
+
+    // Enforce a minimum window size of 1× native resolution so the image
+    // always fits without a scrollbar.
+    {
+        const float titleH = ImGui::GetFrameHeight() + ImGui::GetStyle().WindowPadding.y * 2.0f;
+        const float minW   = info.width  > 0 ? float(info.width)  : 320.0f;
+        const float minH   = info.height > 0 ? float(info.height) : 200.0f;
+        ImGui::SetNextWindowSizeConstraints({ minW, minH + titleH }, { FLT_MAX, FLT_MAX });
+    }
+
+    ImGui::Begin("Screen", &showScreen_,
+        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
     if (info.pixels && info.width > 0 && info.height > 0) {
         // Recreate texture if screen dimensions changed (preset switch)
         if (info.width != screenTexW_ || info.height != screenTexH_) {
@@ -486,7 +519,6 @@ void Application::drawScreen() {
     float  w     = info.width  > 0 ? float(info.width)  : 1.0f;
     float  h     = info.height > 0 ? float(info.height) : 1.0f;
     float  scale = std::min(avail.x / w, avail.y / h);
-    if (scale < 1.0f) scale = 1.0f;
     const ImVec2 sz{ w * scale, h * scale };
 
     ImGui::Image(static_cast<ImTextureID>(screenTex_), sz);
@@ -1672,6 +1704,7 @@ void Application::termPrint(const std::string& line) {
 }
 
 void Application::emulatorStep() {
+    emulatorRunning_ = false;
     ICPU& cpu = machine_.cpu();
     do {
         machine_.clock();
@@ -1820,6 +1853,18 @@ void Application::loadRomDialog() {
     }());
     termPrint(machine_.cpu().stateString());
     termPrint("---");
+}
+
+// ---------------------------------------------------------------------------
+// Session persistence
+// ---------------------------------------------------------------------------
+
+std::string Application::sessionFilePath() const {
+    char* prefPath = SDL_GetPrefPath("the8bitmachine", "The8BitMachine");
+    if (!prefPath) return "";
+    std::string path = std::string(prefPath) + "last_session.json";
+    SDL_free(prefPath);
+    return path;
 }
 
 // ---------------------------------------------------------------------------
