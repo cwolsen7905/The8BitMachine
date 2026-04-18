@@ -122,9 +122,10 @@ endif()
 if(APPLE)
     add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${SOURCES})
     set_target_properties(${PROJECT_NAME} PROPERTIES
-        MACOSX_BUNDLE_BUNDLE_NAME        "The 8-Bit Machine"
-        MACOSX_BUNDLE_GUI_IDENTIFIER     "com.the8bitmachine.app"
-        MACOSX_BUNDLE_BUNDLE_VERSION     "0.29.0"
+        MACOSX_BUNDLE_INFO_PLIST           "${CMAKE_SOURCE_DIR}/Info.plist.in"
+        MACOSX_BUNDLE_BUNDLE_NAME          "The 8-Bit Machine"
+        MACOSX_BUNDLE_GUI_IDENTIFIER       "com.the8bitmachine.app"
+        MACOSX_BUNDLE_BUNDLE_VERSION       "0.29.0"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "0.29.0"
     )
 else()
