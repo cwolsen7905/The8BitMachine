@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Author and copyright in About dialog** — About → The 8-Bit Machine now shows author name, email, and copyright year
 
 ### Fixed
+- **Memory Viewer Follow PC cannot be unchecked** — `GotoAddrAndHighlight` was called every frame before `ImGui::Begin`, overwriting the scroll position before the checkbox click could register; moved inside the Begin block immediately before `DrawContents`
 - **Screen not switching when loading a second preset** — `buildC64Preset()` never set `activeScreen_`, so switching from Apple IIe → C64 left the Apple II framebuffer displayed; `activeScreen_` is now set to the VIC framebuffer at the end of a successful C64 preset build
 - **VIC panel ImGui ID conflict** — five colour-swatch `ColorButton` calls shared the same `"##c"` ID; each row now wraps with `PushID(regIdx)` / `PopID()` to give each button a unique identity and suppress the Dear ImGui assertion
 - **Spectrum 48K config round-trip** — `loadConfig()` previously only handled the `"c64"` preset type and returned an error for `"spectrum48"`; preset type is now dispatched correctly so saved Spectrum configs reload properly

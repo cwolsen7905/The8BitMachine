@@ -1981,8 +1981,6 @@ void Application::drawMemoryViewer() {
     if (memColorsDirty_) rebuildMemRegionColors();
 
     const uint16_t pc = machine_.cpu().getPC();
-    if (memViewFollowPC_)
-        memEditor_.GotoAddrAndHighlight(pc, pc);
 
     ImGui::SetNextWindowSize({ 680.0f, 500.0f }, ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Memory Viewer", &showMemView_)) {
@@ -2016,6 +2014,8 @@ void Application::drawMemoryViewer() {
         ImGui::SameLine(0.0f, 3.0f); ImGui::TextDisabled("PC");
 
         ImGui::Separator();
+        if (memViewFollowPC_)
+            memEditor_.GotoAddrAndHighlight(pc, pc);
         memEditor_.DrawContents(nullptr, 0x10000);
     }
     ImGui::End();
