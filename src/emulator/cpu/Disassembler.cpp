@@ -181,6 +181,23 @@ std::vector<DisasmLine> Disassembler::disassemble(
         line.mnemonic = info.name;
         line.operand  = fmtOperand(info.mode, lo, hi, addr);
 
+        switch (info.mode) {
+            case AM::ABS: case AM::ABX: case AM::ABY: case AM::IND:
+                line.targetAddr = static_cast<uint16_t>((hi << 8) | lo);
+                line.hasTarget  = true;
+                break;
+            case AM::ZP0: case AM::ZPX: case AM::ZPY:
+                line.targetAddr = lo;
+                line.hasTarget  = true;
+                break;
+            case AM::REL:
+                line.targetAddr = static_cast<uint16_t>(
+                    addr + 2 + static_cast<int8_t>(lo));
+                line.hasTarget  = true;
+                break;
+            default: break;
+        }
+
         result.push_back(std::move(line));
 
         // Advance, wrapping within 16-bit space

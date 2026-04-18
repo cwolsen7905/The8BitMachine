@@ -10,11 +10,13 @@ class Bus;
 // A single disassembled instruction
 // ---------------------------------------------------------------------------
 struct DisasmLine {
-    uint16_t addr      = 0;
-    uint8_t  bytes[3]  = {};
-    int      byteCount = 0;
-    std::string mnemonic;   // e.g. "LDA"
-    std::string operand;    // e.g. "#$42"
+    uint16_t addr       = 0;
+    uint8_t  bytes[3]   = {};
+    int      byteCount  = 0;
+    std::string mnemonic;    // e.g. "LDA"
+    std::string operand;     // e.g. "#$42"
+    uint16_t targetAddr = 0; // resolved operand address (ABS/REL/ZP/IND modes)
+    bool     hasTarget  = false;
 };
 
 // ---------------------------------------------------------------------------

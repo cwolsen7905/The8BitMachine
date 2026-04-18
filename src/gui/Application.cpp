@@ -889,6 +889,12 @@ void Application::drawDisassembler() {
             if (it != disasmLabels_.end()) {
                 ImGui::SameLine(0.0f, 10.0f);
                 ImGui::TextDisabled("; %s", it->second.c_str());
+            } else if (line.hasTarget) {
+                auto tit = disasmLabels_.find(line.targetAddr);
+                if (tit != disasmLabels_.end()) {
+                    ImGui::SameLine(0.0f, 10.0f);
+                    ImGui::TextDisabled("; %s", tit->second.c_str());
+                }
             }
         }
 
