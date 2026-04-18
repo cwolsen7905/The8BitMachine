@@ -119,7 +119,17 @@ if(APPLE)
     list(APPEND SOURCES src/gui/FileDialog.mm)
 endif()
 
-add_executable(${PROJECT_NAME} ${SOURCES})
+if(APPLE)
+    add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${SOURCES})
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        MACOSX_BUNDLE_BUNDLE_NAME        "The 8-Bit Machine"
+        MACOSX_BUNDLE_GUI_IDENTIFIER     "com.the8bitmachine.app"
+        MACOSX_BUNDLE_BUNDLE_VERSION     "0.29.0"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.29.0"
+    )
+else()
+    add_executable(${PROJECT_NAME} ${SOURCES})
+endif()
 target_include_directories(${PROJECT_NAME} PRIVATE src)
 target_link_libraries(${PROJECT_NAME} PRIVATE imgui_lib SDL2::SDL2 SDL2_image::SDL2_image OpenGL::GL nlohmann_json::nlohmann_json)
 
@@ -140,19 +150,23 @@ find_program(CA65_EXE ca65)
 find_program(LD65_EXE ld65)
 
 # ---------------------------------------------------------------------------
-# Copy presets/ directory next to the executable after each build
+# Copy runtime resources next to the executable (or into the bundle on macOS)
 # ---------------------------------------------------------------------------
+if(APPLE)
+    set(RESOURCE_DIR "$<TARGET_BUNDLE_CONTENT_DIR:${PROJECT_NAME}>/Resources")
+else()
+    set(RESOURCE_DIR "$<TARGET_FILE_DIR:${PROJECT_NAME}>")
+endif()
+
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/presets"
-        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/presets"
-    COMMENT "Copying presets/ to build directory"
+        "${CMAKE_SOURCE_DIR}/presets" "${RESOURCE_DIR}/presets"
+    COMMENT "Copying presets/ to resources"
 )
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/assets"
-        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/assets"
-    COMMENT "Copying assets/ to build directory"
+        "${CMAKE_SOURCE_DIR}/assets" "${RESOURCE_DIR}/assets"
+    COMMENT "Copying assets/ to resources"
 )
 
 if(CA65_EXE AND LD65_EXE)
