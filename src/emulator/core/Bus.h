@@ -40,6 +40,13 @@ public:
     std::function<void(uint8_t)> onCharOut;
 
     // -----------------------------------------------------------------------
+    // Access hook — called after every CPU read/write (addr, isWrite).
+    // Fires for normal bus accesses only; CHAR_OUT and open-bus are excluded.
+    // Declared mutable so it can be called from the const read() path.
+    // -----------------------------------------------------------------------
+    mutable std::function<void(uint16_t, bool)> onAccess;
+
+    // -----------------------------------------------------------------------
     // Device management
     // -----------------------------------------------------------------------
     void addDevice(uint16_t start, uint16_t end,

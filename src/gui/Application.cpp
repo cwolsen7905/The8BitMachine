@@ -48,6 +48,18 @@ Application::Application() {
         const uint16_t pc = static_cast<Machine*>(ud)->cpu().getPC();
         return (static_cast<uint16_t>(off) == pc) ? IM_COL32(255, 255, 50, 80) : 0;
     };
+
+    machine_.bus().onAccess = [this](uint16_t addr, bool isWrite) {
+        if (watchpointHit_) return;
+        for (const auto& wp : watchpoints_) {
+            if (wp.addr == addr && ((isWrite && wp.onWrite) || (!isWrite && wp.onRead))) {
+                watchpointHit_      = true;
+                watchpointHitAddr_  = addr;
+                watchpointHitWrite_ = isWrite;
+                return;
+            }
+        }
+    };
 }
 
 Application::~Application() {
@@ -277,10 +289,23 @@ void Application::processEvents() {
 
     if (emulatorRunning_) {
         ICPU& cpu = machine_.cpu();
+        watchpointHit_ = false;
         for (int i = 0; i < cyclesPerFrame_; ++i) {
             machine_.clock();
             cpu.clock();
             ++cycleCount_;
+
+            if (watchpointHit_) {
+                emulatorRunning_ = false;
+                std::ostringstream msg;
+                msg << "[Watchpoint] $" << std::uppercase << std::hex
+                    << std::setfill('0') << std::setw(4) << (unsigned)watchpointHitAddr_
+                    << (watchpointHitWrite_ ? " WRITE" : " READ");
+                termPrint(msg.str());
+                termPrint(cpu.stateString());
+                watchpointHit_ = false;
+                break;
+            }
 
             if (cpu.complete() && !breakpoints_.empty()
                     && breakpoints_.count(cpu.getPC())) {
@@ -309,6 +334,7 @@ void Application::render() {
     if (showCpuState_) drawCpuState();
     if (showDisasm_)       drawDisassembler();
     if (showBreakpoints_)  drawBreakpoints();
+    if (showWatchpoints_)  drawWatchpoints();
     if (showMemView_)      drawMemoryViewer();
     if (showDesigner_) drawMachineDesigner();
     if (showPresetDialog_) drawPresetDialog();
@@ -444,6 +470,7 @@ void Application::drawMenuBar() {
     if (ImGui::BeginMenu("Debug")) {
         ImGui::MenuItem("Disassembler",    nullptr, &showDisasm_);
         ImGui::MenuItem("Breakpoints",     nullptr, &showBreakpoints_);
+        ImGui::MenuItem("Watchpoints",     nullptr, &showWatchpoints_);
         ImGui::MenuItem("Memory Viewer",   nullptr, &showMemView_);
         ImGui::EndMenu();
     }
@@ -681,6 +708,64 @@ void Application::drawBreakpoints() {
     if ((ImGui::Button("Add") || enter) && bpAddInput_[0] != '\0') {
         breakpoints_.insert(static_cast<uint16_t>(std::stoul(bpAddInput_, nullptr, 16)));
         bpAddInput_[0] = '\0';
+    }
+
+    ImGui::End();
+}
+
+// ---------------------------------------------------------------------------
+// Watchpoints panel
+// ---------------------------------------------------------------------------
+
+void Application::drawWatchpoints() {
+    ImGui::SetNextWindowSize({ 300.0f, 280.0f }, ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Watchpoints", &showWatchpoints_)) {
+        ImGui::End();
+        return;
+    }
+
+    if (ImGui::Button("Clear All") && !watchpoints_.empty())
+        watchpoints_.clear();
+
+    ImGui::Separator();
+
+    ImGui::BeginChild("##wplist", ImVec2(0, -ImGui::GetFrameHeightWithSpacing() - 8.0f));
+    if (watchpoints_.empty()) {
+        ImGui::TextDisabled("No watchpoints set.");
+        ImGui::TextDisabled("Add an address below to");
+        ImGui::TextDisabled("break on read or write.");
+    }
+    for (int i = 0; i < (int)watchpoints_.size(); ++i) {
+        auto& wp = watchpoints_[i];
+        ImGui::PushID(i);
+        char label[8];
+        std::snprintf(label, sizeof(label), "$%04X", wp.addr);
+        ImGui::TextUnformatted(label);
+        ImGui::SameLine(60.0f);
+        ImGui::Checkbox("R", &wp.onRead);
+        ImGui::SameLine();
+        ImGui::Checkbox("W", &wp.onWrite);
+        ImGui::SameLine();
+        if (ImGui::SmallButton("x"))
+            watchpoints_.erase(watchpoints_.begin() + i);
+        ImGui::PopID();
+    }
+    ImGui::EndChild();
+
+    ImGui::Separator();
+
+    ImGui::SetNextItemWidth(60.0f);
+    const bool enter = ImGui::InputText("##wpadd", wpAddInput_, sizeof(wpAddInput_),
+        ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::SameLine();
+    if ((ImGui::Button("Add") || enter) && wpAddInput_[0] != '\0') {
+        uint16_t addr = static_cast<uint16_t>(std::stoul(wpAddInput_, nullptr, 16));
+        bool exists = false;
+        for (const auto& wp : watchpoints_)
+            if (wp.addr == addr) { exists = true; break; }
+        if (!exists)
+            watchpoints_.push_back({ addr, true, true });
+        wpAddInput_[0] = '\0';
     }
 
     ImGui::End();

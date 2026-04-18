@@ -71,6 +71,20 @@ private:
     bool showBreakpoints_ = false;
     char bpAddInput_[5]   = "";
 
+    // Watchpoints
+    // -----------------------------------------------------------------------
+    struct Watchpoint {
+        uint16_t addr    = 0;
+        bool     onRead  = true;
+        bool     onWrite = true;
+    };
+    std::vector<Watchpoint> watchpoints_;
+    bool     showWatchpoints_    = false;
+    char     wpAddInput_[5]      = "";
+    bool     watchpointHit_      = false;
+    uint16_t watchpointHitAddr_  = 0;
+    bool     watchpointHitWrite_ = false;
+
     // -----------------------------------------------------------------------
     // Per-device panel visibility  (keyed by IBusDevice*)
     // -----------------------------------------------------------------------
@@ -184,6 +198,7 @@ private:
     void drawCpuState();
     void drawDisassembler();
     void drawBreakpoints();
+    void drawWatchpoints();
     void drawMemoryViewer();
     void drawMachineDesigner();
 

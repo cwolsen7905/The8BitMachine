@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.32.0] - 2026-04-17
+
+### Added
+- **Watchpoints** (Debug → Watchpoints) — dockable panel; add a memory address and choose Read, Write, or both; emulator halts and prints `[Watchpoint] $XXXX READ/WRITE` + CPU state to the terminal when the condition is met; `x` removes individual entries, Clear All removes all; duplicate addresses are rejected; implemented via a `Bus::onAccess` callback (fires after every matched read/write, excluded from open-bus and CHAR_OUT)
+
+---
+
 ## [0.31.0] - 2026-04-17
 
 ### Added

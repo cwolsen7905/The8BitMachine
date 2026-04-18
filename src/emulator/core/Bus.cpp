@@ -70,8 +70,11 @@ uint8_t Bus::read(uint16_t addr) const {
     if (addr == CHAR_OUT_ADDR) return 0xFF;  // write-only port
 
     for (const auto& e : devices_) {
-        if (e.device && addr >= e.start && addr <= e.end)
-            return e.device->read(static_cast<uint16_t>(addr - e.start));
+        if (e.device && addr >= e.start && addr <= e.end) {
+            uint8_t val = e.device->read(static_cast<uint16_t>(addr - e.start));
+            if (onAccess) onAccess(addr, false);
+            return val;
+        }
     }
     return 0xFF;  // open bus
 }
@@ -89,6 +92,7 @@ void Bus::write(uint16_t addr, uint8_t value) {
     for (auto& e : devices_) {
         if (e.device && addr >= e.start && addr <= e.end) {
             e.device->write(static_cast<uint16_t>(addr - e.start), value);
+            if (onAccess) onAccess(addr, true);
             return;
         }
     }
