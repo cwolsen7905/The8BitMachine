@@ -32,9 +32,7 @@ MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
                                               const std::string& basicPath,
                                               const std::string& charPath,
                                               bool               keyMatrixTranspose) {
-    hasPreset_ = false;
-    bus_.clearDevices();
-    dynamicDevices_.clear();
+    clearForPreset();
 
     // --- Load ROMs into dynamicDevices_ WITHOUT adding to bus.
     // They must only be reachable through SwitchableRegions, which are
@@ -367,6 +365,13 @@ ROM* Machine::mountROM(uint16_t start, uint16_t end,
     return ptr;
 }
 
+void Machine::clearForPreset() {
+    hasPreset_ = false;
+    bus_.clearDevices();
+    dynamicDevices_.clear();
+    activeFixedDevices_.clear();
+}
+
 ROM* Machine::loadROM(const std::string& label, const std::string& filePath) {
     auto rom = std::make_unique<ROM>(label);
     if (!rom->loadFromFile(filePath)) return nullptr;
@@ -454,10 +459,7 @@ void Machine::unmountAt(size_t busIndex) {
 // ---------------------------------------------------------------------------
 
 MachineConfigResult Machine::buildAppleIIePreset(const std::string& romPath) {
-    hasPreset_ = false;
-    bus_.clearDevices();
-    dynamicDevices_.clear();
-    activeFixedDevices_.clear();
+    clearForPreset();
 
     // 48 KB RAM $0000-$BFFF
     bus_.addDevice(0x0000, 0xBFFF, &ram_, "RAM $0000-$BFFF");
@@ -519,9 +521,7 @@ MachineConfigResult Machine::buildAppleIIePreset(const std::string& romPath) {
 // ---------------------------------------------------------------------------
 
 MachineConfigResult Machine::buildSpectrumPreset(const std::string& romPath) {
-    hasPreset_ = false;
-    bus_.clearDevices();
-    dynamicDevices_.clear();
+    clearForPreset();
 
     // 16 KB ROM at $0000–$3FFF
     ROM* rom = mountROM(0x0000, 0x3FFF, "Spectrum ROM $0000-$3FFF", romPath);
@@ -607,11 +607,12 @@ std::vector<Machine::PanelEntry> Machine::panelDevices() {
     // same chip mapped at two addresses produces two independently-labelled
     // entries (both open the same panel, but the menu is self-describing).
     for (const auto& e : bus_.devices()) {
-        if (e.device && e.device->hasPanel()) {
+        auto* panel = dynamic_cast<IHasPanel*>(e.device);
+        if (panel) {
             char buf[64];
             std::snprintf(buf, sizeof(buf), "%s $%04X-$%04X",
                           e.device->deviceName(), e.start, e.end);
-            result.push_back({ buf, e.device });
+            result.push_back({ buf, e.device, panel });
             onBus.insert(e.device);
         }
     }
@@ -649,8 +650,9 @@ std::vector<Machine::PanelEntry> Machine::panelDevices() {
     };
 
     for (IBusDevice* dev : activeFixedDevices_) {
-        if (dev->hasPanel() && !onBus.count(dev))
-            result.push_back({ findAddr(dev), dev });
+        auto* panel = dynamic_cast<IHasPanel*>(dev);
+        if (panel && !onBus.count(dev))
+            result.push_back({ findAddr(dev), dev, panel });
     }
 
     return result;

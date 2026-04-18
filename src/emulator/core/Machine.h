@@ -1,6 +1,7 @@
 #pragma once
 
 #include "emulator/core/Bus.h"
+#include "emulator/core/IHasPanel.h"
 #include "emulator/core/ICPU.h"
 #include "emulator/devices/CIA6526.h"
 #include "emulator/devices/BankedMemory.h"
@@ -148,6 +149,9 @@ public:
     // option rather than a direct bus entry.
     ROM* loadROM(const std::string& label, const std::string& filePath);
 
+    // Shared teardown called at the top of every preset builder.
+    void clearForPreset();
+
     // unmountAt removes the bus entry at busIndex and, if the device is
     // dynamically owned (e.g. a ROM), frees it once no other entries reference it.
     void unmountAt(size_t busIndex);
@@ -181,7 +185,11 @@ public:
     // All devices that have debug panels, regardless of bus layout.
     // Always includes the fixed chips (VIC, SID, CIA1/2) even when they are
     // not direct bus entries (e.g. inside C64IOSpace in preset mode).
-    struct PanelEntry { std::string label; IBusDevice* device; };
+    struct PanelEntry {
+        std::string  label;
+        IBusDevice*  device;  // for identification, map keys, statusLine, deviceName
+        IHasPanel*   panel;   // for drawPanel — same object as device, different interface
+    };
     std::vector<PanelEntry> panelDevices();
 
     // Look up a device pointer by its config ID ("vic", "sid", "cia1", etc.)

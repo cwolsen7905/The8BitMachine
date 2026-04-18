@@ -143,11 +143,11 @@ void CIA6526::tickTOD() {
             if (newMin == 0x00 && todMin_ == 0x59) {
                 todMin_ = 0x00;
                 // Advance hours (1–12 with AM/PM toggle)
-                uint8_t pm   = todHr_ & 0x80;
-                uint8_t hrs  = todHr_ & 0x7F;
+                uint8_t pm   = todHr_ & TOD_PM;
+                uint8_t hrs  = todHr_ & TOD_HR_MASK;
                 uint8_t next = bcdInc(hrs, 0x12);
                 if (next == 0x00) next = 0x01;
-                if (hrs == 0x11) pm ^= 0x80;     // toggle AM/PM at 11→12
+                if (hrs == 0x11) pm ^= TOD_PM;   // toggle AM/PM at 11→12
                 todHr_ = static_cast<uint8_t>(pm | next);
             } else {
                 todMin_ = newMin;
@@ -164,7 +164,7 @@ void CIA6526::checkTODAlarm() {
     if ((tod10_  & 0x0F) == (todAlarm10_  & 0x0F) &&
         todSec_  == todAlarmSec_  &&
         todMin_  == todAlarmMin_  &&
-        (todHr_ & 0x9F) == (todAlarmHr_ & 0x9F)) {
+        (todHr_ & TOD_HR_WRITE_MASK) == (todAlarmHr_ & TOD_HR_WRITE_MASK)) {
 
         icrFlags_ |= ICR_TOD;
         if (icrMask_ & ICR_TOD) {
@@ -262,23 +262,23 @@ void CIA6526::write(uint16_t offset, uint8_t value) {
             else                  tod10_        = value & 0x0F;
             break;
         case REG_TOD_SEC:
-            if (crb_ & CRB_ALARM) todAlarmSec_ = value & 0x7F;
-            else                  todSec_       = value & 0x7F;
+            if (crb_ & CRB_ALARM) todAlarmSec_ = value & TOD_HR_MASK;
+            else                  todSec_       = value & TOD_HR_MASK;
             break;
         case REG_TOD_MIN:
-            if (crb_ & CRB_ALARM) todAlarmMin_ = value & 0x7F;
-            else                  todMin_       = value & 0x7F;
+            if (crb_ & CRB_ALARM) todAlarmMin_ = value & TOD_HR_MASK;
+            else                  todMin_       = value & TOD_HR_MASK;
             break;
         case REG_TOD_HR:
-            if (crb_ & CRB_ALARM) todAlarmHr_  = value & 0x9F;
-            else                  todHr_        = value & 0x9F;
+            if (crb_ & CRB_ALARM) todAlarmHr_  = value & TOD_HR_WRITE_MASK;
+            else                  todHr_        = value & TOD_HR_WRITE_MASK;
             break;
 
         case REG_SDR: sdr_ = value; break;
 
         case REG_ICR:
-            if (value & 0x80) icrMask_ |=  (value & 0x1F);
-            else              icrMask_ &= ~(value & 0x1F);
+            if (value & ICR_SET_BIT) icrMask_ |=  (value & ICR_SOURCES);
+            else                     icrMask_ &= ~(value & ICR_SOURCES);
             break;
 
         case REG_CRA:
@@ -311,11 +311,11 @@ std::string CIA6526::statusLine() const {
       << "  TB=$" << std::setw(4) << (unsigned)timerBCounter_
       << ((crb_ & CRB_START) ? " RUN" : " STP");
     s << std::dec
-      << "  TOD=" << bcdToInt(todHr_ & 0x7F) << ":"
+      << "  TOD=" << bcdToInt(todHr_ & TOD_HR_MASK) << ":"
       << std::setfill('0') << std::setw(2) << bcdToInt(todMin_) << ":"
       << std::setw(2) << bcdToInt(todSec_) << "."
       << (int)(tod10_ & 0x0F)
-      << ((todHr_ & 0x80) ? "pm" : "am");
+      << ((todHr_ & TOD_PM) ? "pm" : "am");
     return s.str();
 }
 
@@ -375,15 +375,15 @@ void CIA6526::drawPanel(const char* title, bool* open) {
 
     if (ImGui::CollapsingHeader("TOD Clock", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Text("Time   %02d:%02d:%02d.%d %s",
-            bcdToInt(todHr_ & 0x7F),
+            bcdToInt(todHr_ & TOD_HR_MASK),
             bcdToInt(todMin_), bcdToInt(todSec_),
             (int)(tod10_ & 0x0F),
-            (todHr_ & 0x80) ? "PM" : "AM");
+            (todHr_ & TOD_PM) ? "PM" : "AM");
         ImGui::Text("Alarm  %02d:%02d:%02d.%d %s",
-            bcdToInt(todAlarmHr_ & 0x7F),
+            bcdToInt(todAlarmHr_ & TOD_HR_MASK),
             bcdToInt(todAlarmMin_), bcdToInt(todAlarmSec_),
             (int)(todAlarm10_ & 0x0F),
-            (todAlarmHr_ & 0x80) ? "PM" : "AM");
+            (todAlarmHr_ & TOD_PM) ? "PM" : "AM");
     }
 
     if (ImGui::CollapsingHeader("Ports")) {

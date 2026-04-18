@@ -1,6 +1,7 @@
 #pragma once
 
 #include "emulator/core/IBusDevice.h"
+#include "emulator/core/IHasPanel.h"
 #include <atomic>
 #include <cstdint>
 #include <mutex>
@@ -42,17 +43,18 @@
 //   - 23-bit noise LFSR with correct 6581 tap positions
 // ---------------------------------------------------------------------------
 
-class SID6581 : public IBusDevice {
+class SID6581 : public IBusDevice, public IHasPanel {
 public:
     SID6581() { reset(); }
 
+    // IBusDevice
     const char* deviceName() const override { return "MOS 6581 SID"; }
     void        reset()            override;
     void        clock()            override {}
     uint8_t     read (uint16_t offset) const override;
     void        write(uint16_t offset, uint8_t value) override;
 
-    bool        hasPanel()  const override { return true; }
+    // IHasPanel
     void        drawPanel(const char* title, bool* open) override;
     std::string statusLine() const override {
         std::lock_guard<std::mutex> lock(mutex_);

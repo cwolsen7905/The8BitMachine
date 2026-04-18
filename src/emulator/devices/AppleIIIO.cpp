@@ -59,7 +59,7 @@ void AppleIIIO::applySoftSwitch(uint16_t addr) {
 // ---------------------------------------------------------------------------
 
 void AppleIIIO::drawPanel(const char* title, bool* open) {
-    ImGui::SetNextWindowSize({ 280.0f, 160.0f }, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({ 360.0f, 200.0f }, ImGuiCond_FirstUseEver);
     if (!ImGui::Begin(title, open)) { ImGui::End(); return; }
 
     if (ImGui::CollapsingHeader("Keyboard", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -71,9 +71,28 @@ void AppleIIIO::drawPanel(const char* title, bool* open) {
     }
 
     if (ImGui::CollapsingHeader("Soft Switches", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::Text("Mode:  %s", textMode_ ? "TEXT" : (hiRes_ ? "HI-RES" : "LO-RES"));
-        ImGui::Text("Page:  %d", page2_ ? 2 : 1);
-        ImGui::Text("Mixed: %s", mixed_ ? "Yes" : "No");
+        // TEXT / GRAPHICS
+        if (ImGui::RadioButton("TEXT",     textMode_))  applySoftSwitch(0x51);
+        ImGui::SameLine();
+        if (ImGui::RadioButton("GRAPHICS", !textMode_)) applySoftSwitch(0x50);
+
+        // LO-RES / HI-RES (only meaningful in graphics mode, but always toggleable)
+        ImGui::BeginDisabled(textMode_);
+        ImGui::SameLine(0.0f, 16.0f);
+        if (ImGui::RadioButton("LO-RES", !hiRes_)) applySoftSwitch(0x56);
+        ImGui::SameLine();
+        if (ImGui::RadioButton("HI-RES",  hiRes_)) applySoftSwitch(0x57);
+        ImGui::EndDisabled();
+
+        // PAGE 1 / PAGE 2
+        if (ImGui::RadioButton("PAGE 1", !page2_)) applySoftSwitch(0x54);
+        ImGui::SameLine();
+        if (ImGui::RadioButton("PAGE 2",  page2_)) applySoftSwitch(0x55);
+
+        // MIXED
+        ImGui::SameLine(0.0f, 16.0f);
+        bool mixed = mixed_;
+        if (ImGui::Checkbox("MIXED", &mixed)) applySoftSwitch(mixed ? 0x53 : 0x52);
     }
 
     ImGui::End();

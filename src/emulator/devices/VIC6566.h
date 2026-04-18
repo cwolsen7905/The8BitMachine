@@ -1,6 +1,7 @@
 #pragma once
 
 #include "emulator/core/IBusDevice.h"
+#include "emulator/core/IHasPanel.h"
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -22,7 +23,7 @@ class Bus;
 //
 // Address range: typically $D000–$D3FF; the Bus passes an offset (0x000–0x3FF).
 // ---------------------------------------------------------------------------
-class VIC6566 : public IBusDevice {
+class VIC6566 : public IBusDevice, public IHasPanel {
 public:
     // Full rasterised frame including border area (NTSC proportions)
     static constexpr int BORDER_X = 40;   // pixels left and right of active area
@@ -33,7 +34,7 @@ public:
     static constexpr int HEIGHT   = ACTIVE_H + 2 * BORDER_Y;  // 280
 
     // -----------------------------------------------------------------------
-    // IBusDevice interface
+    // IBusDevice
     // -----------------------------------------------------------------------
     const char* deviceName() const override { return "VIC-IIe"; }
     void        reset()            override;
@@ -41,7 +42,8 @@ public:
     uint8_t     read (uint16_t off) const override;
     void        write(uint16_t off, uint8_t val) override;
     std::string statusLine() const override;
-    bool        hasPanel()  const override { return true; }
+
+    // IHasPanel
     void        drawPanel(const char* title, bool* open) override;
 
     // -----------------------------------------------------------------------

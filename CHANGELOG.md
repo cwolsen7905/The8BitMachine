@@ -7,6 +7,31 @@ Releases are tagged on the `main` branch; active development happens on `dev`.
 
 ---
 
+## [Unreleased]
+
+---
+
+## [0.31.0] - 2026-04-18
+
+### Added
+- **AppleIIIO soft-switch toggles** — Soft Switches section of the Apple IIe I/O panel replaced with interactive controls: TEXT/GRAPHICS radio buttons, LO-RES/HI-RES radio buttons (disabled in text mode), PAGE 1/PAGE 2 radio buttons, and a MIXED checkbox; each toggle calls `applySoftSwitch()` so the `AppleIIVideo` callbacks fire immediately and the screen updates in real time
+
+### Changed
+- **Code audit & cleanup** — comprehensive pass over the codebase for readability, stability, and extensibility:
+  - `ROM::read/write` bounds check now compares `static_cast<size_t>(offset)` against `data_.size()` to avoid uint16_t truncation on ROMs larger than 64 KB
+  - `drawMachineDesigner()` (~630 lines) split into 8 focused helpers (`drawDesignerCpuSection`, `drawDesignerDeviceTable`, `drawDesignerContainedDevices`, `drawDesignerAddDevice`, `drawDesignerLoadRom`, `drawDesignerAddBankedRam`, `drawDesignerAddSwitchableRegion`, `drawDesignerAddBankController`)
+  - Preset builders (`buildC64Preset`, `buildAppleIIePreset`, `buildSpectrumPreset`) share a new `Machine::clearForPreset()` helper for the common teardown sequence
+  - CIA6526 named constants extended: `ICR_SET_BIT`, `ICR_SOURCES`, `TOD_PM`, `TOD_HR_MASK`, `TOD_HR_WRITE_MASK`; all raw bit-mask literals in CIA6526.cpp replaced
+  - Designer message fields changed from `std::string` with `rfind`-based color checks to a `DesignerMsg` struct with explicit `isErr` flag, eliminating fragile text-prefix matching
+  - `size_t` underflow guard added in ROM load preview when a PRG file contains only the 2-byte header (now sets an explicit "File has no data" error)
+  - `BankedMemory::statusLine()` now shows bytes instead of "0 KB" for banks smaller than 1024 bytes
+  - `Application.h` Watchpoints section header comment added for consistency with surrounding groups
+  - **SRP file split of Application** — `Application.cpp` (2195 lines) split into four focused implementation files; class definition and state remain in `Application.h` unchanged. New files: `Application_Debugger.cpp` (breakpoints, watchpoints, disassembler, memory viewer, region colour helper), `Application_Designer.cpp` (machine designer panel + 8 helpers + keyboard matrix injection), `Application_Presets.cpp` (preset driver table, preset dialog, preset builder). `Application.cpp` retains core lifecycle, event loop, render, terminal, and config I/O (~850 lines). Contributors can now navigate directly to the file matching the feature they want to change
+  - **OCP preset registration** — eliminated two `if/else if` dispatch chains (`buildActivePreset`, `setDisasmLabels`) in favour of a `kPresetDrivers[]` table in `Application.cpp`. Each entry bundles the `presetType` key, a build lambda, and the preset's disasm label map. Adding a new machine now only requires implementing `Machine::buildXxxPreset()` and appending one entry to the table — no existing dispatch logic is touched. `PresetDriver` struct declared in `Application.h` so it is visible to contributors browsing the header
+  - **ISP split of `IBusDevice`** — `drawPanel()` and the former `hasPanel()` bool removed from `IBusDevice`; extracted to a new `IHasPanel` pure interface (`src/emulator/core/IHasPanel.h`). Devices that expose a debug panel now inherit both `IBusDevice` and `IHasPanel` (CIA6526, SID6581, VIC6566, ULA, AppleIIVideo, AppleIIIO). `Machine::panelDevices()` uses `dynamic_cast<IHasPanel*>` to discover panel-capable devices; `PanelEntry` carries both `IBusDevice*` and `IHasPanel*` so call sites need no casts. New device authors only implement `IBusDevice` unless they also want a panel — no ImGui knowledge required otherwise
+
+---
+
 ## [0.30.0] - 2026-04-18
 
 ### Added

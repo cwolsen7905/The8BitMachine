@@ -1,6 +1,7 @@
 #pragma once
 
 #include "emulator/core/IBusDevice.h"
+#include "emulator/core/IHasPanel.h"
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -22,16 +23,18 @@
 //
 // All other addresses in the range return $FF / ignore writes.
 // ---------------------------------------------------------------------------
-class AppleIIIO : public IBusDevice {
+class AppleIIIO : public IBusDevice, public IHasPanel {
 public:
+    // IBusDevice
     const char* deviceName() const override { return "Apple IIe I/O"; }
     void    reset()                          override;
     void    clock()                          override {}
     uint8_t read (uint16_t addr) const       override;
     void    write(uint16_t addr, uint8_t val) override;
-    bool    hasPanel()      const            override { return true; }
-    void    drawPanel(const char* title, bool* open) override;
     std::string statusLine() const           override;
+
+    // IHasPanel
+    void    drawPanel(const char* title, bool* open) override;
 
     // -----------------------------------------------------------------------
     // Keyboard — called by Machine key handler on key-down

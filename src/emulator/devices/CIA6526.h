@@ -1,6 +1,7 @@
 #pragma once
 
 #include "emulator/core/IBusDevice.h"
+#include "emulator/core/IHasPanel.h"
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -25,18 +26,19 @@
 // TOD: reading $0B latches the time until $08 is read; alarm fires ICR bit 2
 // ---------------------------------------------------------------------------
 
-class CIA6526 : public IBusDevice {
+class CIA6526 : public IBusDevice, public IHasPanel {
 public:
     CIA6526() { reset(); }
 
-    // IBusDevice interface
+    // IBusDevice
     const char* deviceName() const override { return "MOS 6526 CIA"; }
     void        reset()            override;
     void        clock()            override;
     uint8_t     read (uint16_t offset) const override;
     void        write(uint16_t offset, uint8_t value) override;
     std::string statusLine() const override;
-    bool        hasPanel()  const override { return true; }
+
+    // IHasPanel
     void        drawPanel(const char* title, bool* open) override;
 
     // Callback fired when an unmasked interrupt fires.
@@ -93,10 +95,12 @@ public:
     static constexpr uint8_t REG_CRB      = 0x0F;
 
     // ICR bits
-    static constexpr uint8_t ICR_TA  = 1 << 0;
-    static constexpr uint8_t ICR_TB  = 1 << 1;
-    static constexpr uint8_t ICR_TOD = 1 << 2;
-    static constexpr uint8_t ICR_IR  = 1 << 7;
+    static constexpr uint8_t ICR_TA      = 1 << 0;
+    static constexpr uint8_t ICR_TB      = 1 << 1;
+    static constexpr uint8_t ICR_TOD     = 1 << 2;
+    static constexpr uint8_t ICR_IR      = 1 << 7;  // any enabled interrupt fired
+    static constexpr uint8_t ICR_SET_BIT = 1 << 7;  // write: 1=set mask bits, 0=clear
+    static constexpr uint8_t ICR_SOURCES = 0x1F;     // write: which source bits to set/clear
 
     // CRA bits
     static constexpr uint8_t CRA_START   = 1 << 0;
@@ -109,6 +113,11 @@ public:
     static constexpr uint8_t CRB_LOAD    = 1 << 4;
     static constexpr uint8_t CRB_INMODE  = 1 << 6;  // 0=ϕ2, 1=count TA underflows
     static constexpr uint8_t CRB_ALARM   = 1 << 7;  // 0=write TOD time, 1=write alarm
+
+    // TOD hour register bit fields
+    static constexpr uint8_t TOD_PM           = 0x80;  // bit 7: AM=0 / PM=1
+    static constexpr uint8_t TOD_HR_MASK      = 0x7F;  // bits 6–0: BCD hour value
+    static constexpr uint8_t TOD_HR_WRITE_MASK = 0x9F; // valid bits for TOD HR writes
 
 private:
     // Port registers

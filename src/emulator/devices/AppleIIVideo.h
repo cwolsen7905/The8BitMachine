@@ -1,6 +1,7 @@
 #pragma once
 
 #include "emulator/core/IBusDevice.h"
+#include "emulator/core/IHasPanel.h"
 #include <array>
 #include <cstdint>
 #include <string>
@@ -20,7 +21,7 @@ class Bus;
 //
 // Display: 280×192 RGBA framebuffer (green phosphor theme).
 // ---------------------------------------------------------------------------
-class AppleIIVideo : public IBusDevice {
+class AppleIIVideo : public IBusDevice, public IHasPanel {
 public:
     static constexpr int WIDTH           = 280;
     static constexpr int HEIGHT          = 192;
@@ -36,9 +37,10 @@ public:
     void    clock()                          override;
     uint8_t read (uint16_t) const            override { return 0xFF; }
     void    write(uint16_t, uint8_t)         override {}
-    bool    hasPanel()      const            override { return true; }
-    void    drawPanel(const char* title, bool* open) override;
     std::string statusLine() const           override;
+
+    // IHasPanel
+    void    drawPanel(const char* title, bool* open) override;
 
     // -----------------------------------------------------------------------
     // Bus — needed to read screen RAM during renderFrame()

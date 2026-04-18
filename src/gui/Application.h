@@ -35,6 +35,22 @@ struct PresetInfo {
 #include "emulator/core/IBusDevice.h"
 #include "emulator/core/Machine.h"
 #include "imgui_memory_editor.h"
+#include <functional>
+
+// ---------------------------------------------------------------------------
+// PresetDriver — bundles everything Application needs to activate one preset
+// type.  Add a new entry to kPresetDrivers[] in Application.cpp to support a
+// new machine without touching any existing dispatch logic.
+// ---------------------------------------------------------------------------
+struct PresetDriver {
+    std::string presetType;    // must match PresetInfo::presetType from JSON
+    bool        resetScreenTex = false;  // true when the screen texture dimensions change
+    std::function<MachineConfigResult(
+        Machine&,
+        const std::unordered_map<std::string, std::string>& romPaths,
+        bool keyMatrixTranspose)> build;
+    std::unordered_map<uint16_t, std::string> disasmLabels;
+};
 
 class Application {
 public:
@@ -71,6 +87,7 @@ private:
     bool showBreakpoints_ = false;
     char bpAddInput_[5]   = "";
 
+    // -----------------------------------------------------------------------
     // Watchpoints
     // -----------------------------------------------------------------------
     struct Watchpoint {
@@ -140,21 +157,30 @@ private:
     // -----------------------------------------------------------------------
     // Machine Designer
     // -----------------------------------------------------------------------
+    struct DesignerMsg {
+        std::string text;
+        bool        isErr = false;
+        void setOk(std::string s)  { text = std::move(s); isErr = false; }
+        void setErr(std::string s) { text = std::move(s); isErr = true;  }
+        void clear()               { text.clear(); isErr = false; }
+        bool empty() const         { return text.empty(); }
+    };
+
     int         designerAddDevIdx_  = 0;
     char        designerAddStart_[5]{};
     char        designerAddEnd_[5]{};
-    std::string designerAddError_;
+    std::string designerAddError_;  // add-device error (simple string; shown only in red)
 
     // ROM loading
     char        designerRomStart_[5]{};
-    std::string designerRomMsg_;
+    DesignerMsg designerRomMsg_;
 
     // Banked RAM
     char        designerBankStart_[5]{};
     char        designerBankEnd_[5]{};
     char        designerBankSelAddr_[5]{};
     char        designerBankCount_[4]{};
-    std::string designerBankMsg_;
+    DesignerMsg designerBankMsg_;
 
     // Preset dialog status message
     std::string presetMsg_;
@@ -162,11 +188,11 @@ private:
     // Switchable Region
     char        designerSRStart_[5]{};
     char        designerSREnd_[5]{};
-    std::string designerSRMsg_;
+    DesignerMsg designerSRMsg_;
 
     // Bank Controller
     char        designerBCAddr_[5]{};
-    std::string designerBCMsg_;
+    DesignerMsg designerBCMsg_;
 
     // Inline address editing
     int         designerEditRow_    = -1;
@@ -204,9 +230,16 @@ private:
     void drawBreakpoints();
     void drawWatchpoints();
     void rebuildMemRegionColors();
-    void setDisasmLabels(const std::string& presetType);
     void drawMemoryViewer();
     void drawMachineDesigner();
+    void drawDesignerCpuSection();
+    void drawDesignerDeviceTable(int& removeIdx, int& moveFrom, int& moveTo);
+    void drawDesignerContainedDevices();
+    void drawDesignerAddDevice();
+    void drawDesignerLoadRom();
+    void drawDesignerAddBankedRam();
+    void drawDesignerAddSwitchableRegion();
+    void drawDesignerAddBankController();
 
     void termPrint(const std::string& line);
 
