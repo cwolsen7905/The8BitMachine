@@ -450,9 +450,11 @@ void Application::drawMenuBar() {
     if (ImGui::BeginMenu("Help")) {
         if (ImGui::MenuItem("About")) {
             termPrint("---");
-            termPrint("The 8-Bit Machine  v0.8");
+            termPrint("The 8-Bit Machine  v0.29.0");
             termPrint("Design your own 8-bit computer.");
             termPrint("Pick a CPU, add devices, wire the address space.");
+            termPrint("Author: Christopher W. Olsen <cwolsen@brainchurts.com>");
+            termPrint("Copyright (c) 2026 Christopher W. Olsen. All rights reserved.");
             termPrint("---");
         }
         ImGui::EndMenu();
