@@ -6,23 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [0.32.0] - 2026-04-17
+## [Unreleased]
 
 ### Added
 - **Watchpoints** (Debug → Watchpoints) — dockable panel; add a memory address and choose Read, Write, or both; emulator halts and prints `[Watchpoint] $XXXX READ/WRITE` + CPU state to the terminal when the condition is met; `x` removes individual entries, Clear All removes all; duplicate addresses are rejected; implemented via a `Bus::onAccess` callback (fires after every matched read/write, excluded from open-bus and CHAR_OUT)
-
----
-
-## [0.31.0] - 2026-04-17
-
-### Added
 - **Breakpoints panel** (Debug menu) — dockable panel listing all active breakpoints sorted by address; click any entry to navigate the Disassembler to that address; `x` button removes individual breakpoints; "Clear All" removes all at once; hex input field + Add button (or Enter) sets a breakpoint by address without scrolling the Disassembler
-
----
-
-## [0.30.0] - 2026-04-17
-
-### Added
 - **Apple IIe preset** — `presets/apple2e.json`; ROM picker loads a 12 KB, 16 KB, or 32 KB Apple IIe ROM image; mounts 48 KB RAM at `$0000–$BFFF`, `AppleIIIO` at `$C000–$C0FF`, ROM at `$C000–$FFFF`; switches CPU to WDC 65C02; preset auto-sets ~1 MHz (17 030 cycles/frame)
 - **`AppleIIVideo` device** — 280×192 green-phosphor framebuffer; text mode: 40×24 characters from embedded 128-character ROM with inverse and flash; hi-res mode: monochrome 280×192 pixel rendering; mixed mode: bottom 4 rows text, rest hi-res; soft switches `$C050–$C057` select graphics/text, page 1/2, lo-res/hi-res
 - **`AppleIIIO` device** — keyboard latch at `$C000` (bit 7 = strobe), strobe clear at `$C010`, soft-switch activation on reads/writes `$C050–$C057`; `pressKey(ascii)` sets the latch with the strobe bit set
