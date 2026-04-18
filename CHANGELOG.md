@@ -12,6 +12,17 @@ Releases are tagged on the `main` branch; active development happens on `dev`.
 ### Added
 - **AppleIIIO soft-switch toggles** — Soft Switches section of the Apple IIe I/O panel replaced with interactive controls: TEXT/GRAPHICS radio buttons, LO-RES/HI-RES radio buttons (disabled in text mode), PAGE 1/PAGE 2 radio buttons, and a MIXED checkbox; each toggle calls `applySoftSwitch()` so the `AppleIIVideo` callbacks fire immediately and the screen updates in real time
 
+### Changed
+- **Code audit & cleanup** — comprehensive pass over the codebase for readability, stability, and extensibility:
+  - `ROM::read/write` bounds check now compares `static_cast<size_t>(offset)` against `data_.size()` to avoid uint16_t truncation on ROMs larger than 64 KB
+  - `drawMachineDesigner()` (~630 lines) split into 8 focused helpers (`drawDesignerCpuSection`, `drawDesignerDeviceTable`, `drawDesignerContainedDevices`, `drawDesignerAddDevice`, `drawDesignerLoadRom`, `drawDesignerAddBankedRam`, `drawDesignerAddSwitchableRegion`, `drawDesignerAddBankController`)
+  - Preset builders (`buildC64Preset`, `buildAppleIIePreset`, `buildSpectrumPreset`) share a new `Machine::clearForPreset()` helper for the common teardown sequence
+  - CIA6526 named constants extended: `ICR_SET_BIT`, `ICR_SOURCES`, `TOD_PM`, `TOD_HR_MASK`, `TOD_HR_WRITE_MASK`; all raw bit-mask literals in CIA6526.cpp replaced
+  - Designer message fields changed from `std::string` with `rfind`-based color checks to a `DesignerMsg` struct with explicit `isErr` flag, eliminating fragile text-prefix matching
+  - `size_t` underflow guard added in ROM load preview when a PRG file contains only the 2-byte header (now sets an explicit "File has no data" error)
+  - `BankedMemory::statusLine()` now shows bytes instead of "0 KB" for banks smaller than 1024 bytes
+  - `Application.h` Watchpoints section header comment added for consistency with surrounding groups
+
 ---
 
 ## [0.30.0] - 2026-04-18

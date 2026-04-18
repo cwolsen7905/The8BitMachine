@@ -148,6 +148,9 @@ public:
     // option rather than a direct bus entry.
     ROM* loadROM(const std::string& label, const std::string& filePath);
 
+    // Shared teardown called at the top of every preset builder.
+    void clearForPreset();
+
     // unmountAt removes the bus entry at busIndex and, if the device is
     // dynamically owned (e.g. a ROM), frees it once no other entries reference it.
     void unmountAt(size_t busIndex);

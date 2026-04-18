@@ -911,38 +911,59 @@ void Application::drawDisassembler() {
 }
 
 // ---------------------------------------------------------------------------
+// Machine Designer panel — known devices table (file-scope so helpers can use it)
+// ---------------------------------------------------------------------------
+
+namespace {
+    struct DesignerKnownDev { const char* id; const char* name; const char* defStart; const char* defEnd; };
+    static constexpr DesignerKnownDev kDesignerKnown[] = {
+        { "vic",          "VIC-IIe (MOS 6566)",         "D000", "D3FF" },
+        { "sid",          "SID (MOS 6581)",              "D400", "D7FF" },
+        { "cia1",         "CIA1 (MOS 6526)",             "F100", "F1FF" },
+        { "cia2",         "CIA2 (MOS 6526)",             "F200", "F2FF" },
+        { "ula",          "ULA (ZX Spectrum)",           "0000", "3FFF" },
+        { "c64_io_space", "C64 I/O Space (VIC+SID+CIA)", "D000", "DFFF" },
+        { "ram",          "RAM (64 KB flat)",            "0000", "FFFF" },
+        { "char_out",     "CHAR_OUT debug port",         "F000", "F000" },
+    };
+    static constexpr int kDesignerKnownCount = (int)(sizeof(kDesignerKnown) / sizeof(kDesignerKnown[0]));
+} // namespace
+
+// ---------------------------------------------------------------------------
 // Machine Designer panel
 // ---------------------------------------------------------------------------
 
 void Application::drawMachineDesigner() {
-    struct KnownDev {
-        const char* id;
-        const char* name;
-        const char* defStart;
-        const char* defEnd;
-    };
-    static constexpr KnownDev kKnown[] = {
-        { "vic",          "VIC-IIe (MOS 6566)",        "D000", "D3FF" },
-        { "sid",          "SID (MOS 6581)",             "D400", "D7FF" },
-        { "cia1",         "CIA1 (MOS 6526)",            "F100", "F1FF" },
-        { "cia2",         "CIA2 (MOS 6526)",            "F200", "F2FF" },
-        { "ula",          "ULA (ZX Spectrum)",          "0000", "3FFF" },
-        { "c64_io_space", "C64 I/O Space (VIC+SID+CIA)","D000", "DFFF" },
-        { "ram",          "RAM (64 KB flat)",           "0000", "FFFF" },
-        { "char_out",     "CHAR_OUT debug port",        "F000", "F000" },
-    };
-    static constexpr int kKnownCount = (int)(sizeof(kKnown) / sizeof(kKnown[0]));
-
-    // Seed address fields on first open
     if (designerAddStart_[0] == '\0') {
-        std::strncpy(designerAddStart_, kKnown[0].defStart, 5);
-        std::strncpy(designerAddEnd_,   kKnown[0].defEnd,   5);
+        std::strncpy(designerAddStart_, kDesignerKnown[0].defStart, 5);
+        std::strncpy(designerAddEnd_,   kDesignerKnown[0].defEnd,   5);
     }
 
     ImGui::SetNextWindowSize({ 560.0f, 440.0f }, ImGuiCond_FirstUseEver);
     ImGui::Begin("Machine Designer", &showDesigner_);
 
-    // ---- CPU selector ----
+    drawDesignerCpuSection();
+
+    int removeIdx = -1, moveFrom = -1, moveTo = -1;
+    drawDesignerDeviceTable(removeIdx, moveFrom, moveTo);
+    if (removeIdx >= 0)
+        machine_.unmountAt(static_cast<size_t>(removeIdx));
+    if (moveFrom >= 0 && moveTo >= 0)
+        machine_.bus().moveEntry(static_cast<size_t>(moveFrom), static_cast<size_t>(moveTo));
+
+    drawDesignerContainedDevices();
+    drawDesignerAddDevice();
+    drawDesignerLoadRom();
+    drawDesignerAddBankedRam();
+    drawDesignerAddSwitchableRegion();
+    drawDesignerAddBankController();
+
+    ImGui::End();
+}
+
+// ---------------------------------------------------------------------------
+
+void Application::drawDesignerCpuSection() {
     ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "CPU");
     ImGui::SameLine(80.0f);
     const char* cpuNames[] = { "MOS 8502", "MOS 6510", "WDC 65C02", "Zilog Z80" };
@@ -958,8 +979,11 @@ void Application::drawMachineDesigner() {
         ImGui::EndCombo();
     }
     ImGui::Separator();
+}
 
-    // ---- Address-space device table ----
+// ---------------------------------------------------------------------------
+
+void Application::drawDesignerDeviceTable(int& removeIdx, int& moveFrom, int& moveTo) {
     ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "Address Space");
     if (ImGui::SmallButton("Sort by Address"))
         machine_.bus().sortByAddress();
@@ -971,11 +995,6 @@ void Application::drawMachineDesigner() {
         ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
         ImGuiTableFlags_SizingFixedFit;
 
-    int removeIdx = -1;
-    int moveFrom  = -1;
-    int moveTo    = -1;
-
-    // ---- Pre-compute per-row validation warnings ----
     struct RowWarn { uint32_t color = 0; const char* msg = nullptr; };
     const auto& allDevs = machine_.bus().devices();
     std::vector<RowWarn> rowWarns(allDevs.size());
@@ -1001,7 +1020,7 @@ void Application::drawMachineDesigner() {
     }
 
     if (ImGui::BeginTable("##devices", 6, tf)) {
-        ImGui::TableSetupColumn("",       ImGuiTableColumnFlags_WidthFixed,  16.0f);  // drag handle
+        ImGui::TableSetupColumn("",       ImGuiTableColumnFlags_WidthFixed,  16.0f);
         ImGui::TableSetupColumn("Start",  ImGuiTableColumnFlags_WidthFixed,  56.0f);
         ImGui::TableSetupColumn("End",    ImGuiTableColumnFlags_WidthFixed,  56.0f);
         ImGui::TableSetupColumn("Device", ImGuiTableColumnFlags_WidthFixed, 160.0f);
@@ -1009,7 +1028,6 @@ void Application::drawMachineDesigner() {
         ImGui::TableSetupColumn("",       ImGuiTableColumnFlags_WidthFixed,  24.0f);
         ImGui::TableHeadersRow();
 
-        // Cancel inline edit on Escape
         if (designerEditRow_ >= 0 && ImGui::IsKeyPressed(ImGuiKey_Escape))
             designerEditRow_ = designerEditCol_ = -1;
 
@@ -1018,11 +1036,10 @@ void Application::drawMachineDesigner() {
             ImGui::PushID(i);
             ImGui::TableNextRow();
 
-            // Apply warning row tint
             if (rowWarns[i].color)
                 ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, rowWarns[i].color);
 
-            // ---- col 0: drag handle (also carries the warning tooltip) ----
+            // col 0: drag handle + warning tooltip
             ImGui::TableSetColumnIndex(0);
             ImGui::PushStyleColor(ImGuiCol_Header,        ImVec4(0,0,0,0));
             ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.4f,0.4f,0.4f,0.3f));
@@ -1046,8 +1063,7 @@ void Application::drawMachineDesigner() {
                 ImGui::EndDragDropTarget();
             }
 
-            // ---- cols 1 & 2: editable address cells ----
-            // semanticCol: 0=start, 1=end (stored in designerEditCol_)
+            // cols 1 & 2: editable address cells (semanticCol: 0=start, 1=end)
             auto addrCell = [&](int tableCol, int semanticCol, uint16_t val) {
                 ImGui::TableSetColumnIndex(tableCol);
                 if (designerEditRow_ == i && designerEditCol_ == semanticCol) {
@@ -1055,8 +1071,6 @@ void Application::drawMachineDesigner() {
                         ImGui::SetKeyboardFocusHere();
                         designerEditFocus_ = false;
                     }
-
-                    // Validate live buffer against the other address
                     char* ep;
                     unsigned long v     = std::strtoul(designerEditBuf_, &ep, 16);
                     const bool validHex = (ep != designerEditBuf_ && v <= 0xFFFF);
@@ -1072,21 +1086,17 @@ void Application::drawMachineDesigner() {
                         ImGuiInputTextFlags_CharsHexadecimal |
                         ImGuiInputTextFlags_CharsUppercase   |
                         ImGuiInputTextFlags_EnterReturnsTrue;
-                    // Tab triggers a commit just like Enter — check before InputText
-                    // consumes the event so the key state is still readable.
                     const bool tabPressed = ImGui::IsKeyPressed(ImGuiKey_Tab, false);
                     bool entered = ImGui::InputText("##ec", designerEditBuf_, 5, kEditFlags);
                     bool lost    = !entered && ImGui::IsItemDeactivated();
-                    // Treat Tab-out as an intentional commit attempt.
                     const bool commit = entered || (lost && tabPressed);
 
                     if (invalid) ImGui::PopStyleColor();
 
                     if (commit) {
                         if (invalid) {
-                            designerEditFocus_ = true;  // reject commit — keep editing
+                            designerEditFocus_ = true;
                         } else {
-                            // Clear only this cell's own invalid marker on commit.
                             if (designerInvalidRow_ == i && designerInvalidCol_ == semanticCol)
                                 designerInvalidRow_ = designerInvalidCol_ = -1;
                             machine_.bus().modifyAt((size_t)i, ns, ne);
@@ -1094,21 +1104,16 @@ void Application::drawMachineDesigner() {
                         }
                     } else if (lost) {
                         if (invalid) {
-                            // Persist the typed value so it stays visible in red
-                            // and pre-fills when the user re-enters this cell.
                             designerInvalidRow_ = i;
                             designerInvalidCol_ = semanticCol;
                             std::strncpy(designerInvalidBuf_, designerEditBuf_, 5);
                         } else {
-                            // Click-away with a valid value: clear only this cell's
-                            // own invalid marker — don't disturb the other cell.
                             if (designerInvalidRow_ == i && designerInvalidCol_ == semanticCol)
                                 designerInvalidRow_ = designerInvalidCol_ = -1;
                         }
                         designerEditRow_ = designerEditCol_ = -1;
                     }
                 } else {
-                    // Check if this cell has a persistent invalid value to display
                     const bool hasInvalid = (designerInvalidRow_ == i &&
                                              designerInvalidCol_ == semanticCol);
                     char buf[8];
@@ -1126,7 +1131,6 @@ void Application::drawMachineDesigner() {
                         designerEditRow_   = i;
                         designerEditCol_   = semanticCol;
                         designerEditFocus_ = true;
-                        // Pre-fill with the invalid value so user can correct it
                         if (hasInvalid)
                             std::strncpy(designerEditBuf_, designerInvalidBuf_, 5);
                         else
@@ -1140,11 +1144,11 @@ void Application::drawMachineDesigner() {
             addrCell(1, 0, e.start);
             addrCell(2, 1, e.end);
 
-            // ---- col 3: device label ----
+            // col 3: device label
             ImGui::TableSetColumnIndex(3);
             ImGui::TextUnformatted(e.label.c_str());
 
-            // ---- col 4: status / bank selector ----
+            // col 4: status / live bank selector for SwitchableRegion
             ImGui::TableSetColumnIndex(4);
             auto* sr = dynamic_cast<SwitchableRegion*>(e.device);
             if (sr && sr->optionCount() > 0) {
@@ -1167,7 +1171,7 @@ void Application::drawMachineDesigner() {
                 ImGui::TextDisabled("—");
             }
 
-            // ---- col 5: remove ----
+            // col 5: remove
             ImGui::TableSetColumnIndex(5);
             if (ImGui::SmallButton("×"))
                 removeIdx = i;
@@ -1177,80 +1181,74 @@ void Application::drawMachineDesigner() {
         ImGui::EndTable();
     }
 
-    if (removeIdx >= 0)
-        machine_.unmountAt(static_cast<size_t>(removeIdx));
-    if (moveFrom >= 0 && moveTo >= 0)
-        machine_.bus().moveEntry(static_cast<size_t>(moveFrom),
-                                  static_cast<size_t>(moveTo));
-
     if (!hasCatchAll)
         ImGui::TextColored({ 1.0f, 0.85f, 0.2f, 1.0f },
             "No catch-all entry ($0000-$FFFF) -- unmapped reads return $FF");
+}
 
-    // ---- Indirect / Contained Devices ----
-    // Show chips that live inside a container (e.g. C64IOSpace inside a
-    // SwitchableRegion) as read-only informational rows.
-    {
-        // Build set of pointers that appear directly on the bus
-        std::unordered_set<const IBusDevice*> directBus;
-        for (const auto& e : machine_.bus().devices())
-            if (e.device) directBus.insert(e.device);
+// ---------------------------------------------------------------------------
 
-        // Collect indirect panel devices (found via panelDevices() fallback)
-        std::vector<Machine::PanelEntry> indirect;
-        for (const auto& pe : machine_.panelDevices())
-            if (!directBus.count(pe.device))
-                indirect.push_back(pe);
+void Application::drawDesignerContainedDevices() {
+    std::unordered_set<const IBusDevice*> directBus;
+    for (const auto& e : machine_.bus().devices())
+        if (e.device) directBus.insert(e.device);
 
-        if (!indirect.empty()) {
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "Contained Devices");
-            ImGui::SameLine();
-            ImGui::TextDisabled("(via container — read only)");
-            ImGui::Spacing();
+    std::vector<Machine::PanelEntry> indirect;
+    for (const auto& pe : machine_.panelDevices())
+        if (!directBus.count(pe.device))
+            indirect.push_back(pe);
 
-            if (ImGui::BeginTable("##indirect", 3,
-                    ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg |
-                    ImGuiTableFlags_SizingFixedFit)) {
-                ImGui::TableSetupColumn("Address", ImGuiTableColumnFlags_WidthFixed, 130.0f);
-                ImGui::TableSetupColumn("Device",  ImGuiTableColumnFlags_WidthFixed, 160.0f);
-                ImGui::TableSetupColumn("Status",  ImGuiTableColumnFlags_WidthStretch);
-                ImGui::TableHeadersRow();
+    if (indirect.empty()) return;
 
-                for (const auto& pe : indirect) {
-                    ImGui::TableNextRow();
-                    ImGui::TableSetColumnIndex(0);
-                    ImGui::TextDisabled("%s", pe.label.c_str());
-                    ImGui::TableSetColumnIndex(1);
-                    ImGui::TextUnformatted(pe.device->deviceName());
-                    ImGui::TableSetColumnIndex(2);
-                    ImGui::TextDisabled("%s", pe.device->statusLine().c_str());
-                }
-                ImGui::EndTable();
-            }
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "Contained Devices");
+    ImGui::SameLine();
+    ImGui::TextDisabled("(via container — read only)");
+    ImGui::Spacing();
+
+    if (ImGui::BeginTable("##indirect", 3,
+            ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg |
+            ImGuiTableFlags_SizingFixedFit)) {
+        ImGui::TableSetupColumn("Address", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+        ImGui::TableSetupColumn("Device",  ImGuiTableColumnFlags_WidthFixed, 160.0f);
+        ImGui::TableSetupColumn("Status",  ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableHeadersRow();
+
+        for (const auto& pe : indirect) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextDisabled("%s", pe.label.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextUnformatted(pe.device->deviceName());
+            ImGui::TableSetColumnIndex(2);
+            ImGui::TextDisabled("%s", pe.device->statusLine().c_str());
         }
+        ImGui::EndTable();
     }
+}
 
-    // ---- Add Device ----
+// ---------------------------------------------------------------------------
+
+void Application::drawDesignerAddDevice() {
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "Add Device");
     ImGui::Spacing();
 
-    int prevIdx = designerAddDevIdx_;
+    const int prevIdx = designerAddDevIdx_;
     ImGui::SetNextItemWidth(180.0f);
-    if (ImGui::BeginCombo("##adddev", kKnown[designerAddDevIdx_].name)) {
-        for (int i = 0; i < kKnownCount; ++i) {
-            if (ImGui::Selectable(kKnown[i].name, designerAddDevIdx_ == i))
+    if (ImGui::BeginCombo("##adddev", kDesignerKnown[designerAddDevIdx_].name)) {
+        for (int i = 0; i < kDesignerKnownCount; ++i) {
+            if (ImGui::Selectable(kDesignerKnown[i].name, designerAddDevIdx_ == i))
                 designerAddDevIdx_ = i;
             if (designerAddDevIdx_ == i) ImGui::SetItemDefaultFocus();
         }
         ImGui::EndCombo();
     }
     if (designerAddDevIdx_ != prevIdx) {
-        std::strncpy(designerAddStart_, kKnown[designerAddDevIdx_].defStart, 5);
-        std::strncpy(designerAddEnd_,   kKnown[designerAddDevIdx_].defEnd,   5);
+        std::strncpy(designerAddStart_, kDesignerKnown[designerAddDevIdx_].defStart, 5);
+        std::strncpy(designerAddEnd_,   kDesignerKnown[designerAddDevIdx_].defEnd,   5);
         designerAddError_.clear();
     }
 
@@ -1268,17 +1266,15 @@ void Application::drawMachineDesigner() {
 
     if (ImGui::Button("Add")) {
         char* ep = nullptr;
-        unsigned long s = std::strtoul(designerAddStart_, &ep, 16);
-        unsigned long e2 = std::strtoul(designerAddEnd_,  &ep, 16);
+        unsigned long s  = std::strtoul(designerAddStart_, &ep, 16);
+        unsigned long e2 = std::strtoul(designerAddEnd_,   &ep, 16);
         if (s <= e2 && e2 <= 0xFFFF) {
-            const KnownDev& kd = kKnown[designerAddDevIdx_];
+            const DesignerKnownDev& kd = kDesignerKnown[designerAddDevIdx_];
             IBusDevice* dev = machine_.deviceForId(kd.id);
             char label[64];
             std::snprintf(label, sizeof(label), "%s $%04lX–$%04lX", kd.name, s, e2);
             machine_.bus().addDevice(
-                static_cast<uint16_t>(s),
-                static_cast<uint16_t>(e2),
-                dev, label);
+                static_cast<uint16_t>(s), static_cast<uint16_t>(e2), dev, label);
             designerAddError_.clear();
         } else {
             designerAddError_ = "Invalid range";
@@ -1289,14 +1285,16 @@ void Application::drawMachineDesigner() {
         ImGui::SameLine();
         ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", designerAddError_.c_str());
     }
+}
 
-    // ---- Load ROM ----
+// ---------------------------------------------------------------------------
+
+void Application::drawDesignerLoadRom() {
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "Load ROM File");
     ImGui::Spacing();
 
-    // Seed start field on first open
     if (designerRomStart_[0] == '\0')
         std::strncpy(designerRomStart_, "E000", 5);
 
@@ -1314,12 +1312,11 @@ void Application::drawMachineDesigner() {
             char* ep = nullptr;
             unsigned long s = std::strtoul(designerRomStart_, &ep, 16);
             if (ep == designerRomStart_ || s > 0xFFFF) {
-                designerRomMsg_ = "Invalid start address";
+                designerRomMsg_.setErr("Invalid start address");
             } else {
-                // Determine end from file size (strip PRG header if .prg)
                 std::ifstream probe(path, std::ios::binary | std::ios::ate);
                 if (!probe) {
-                    designerRomMsg_ = "Cannot open file";
+                    designerRomMsg_.setErr("Cannot open file");
                 } else {
                     size_t fileSize = static_cast<size_t>(probe.tellg());
                     auto ext = path.size() >= 4 ? path.substr(path.size() - 4) : "";
@@ -1327,29 +1324,32 @@ void Application::drawMachineDesigner() {
                         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
                     if (ext == ".prg" && fileSize >= 2) fileSize -= 2;
 
-                    unsigned long e2 = s + fileSize - 1;
-                    if (e2 > 0xFFFF) e2 = 0xFFFF;
-
-                    auto slash = path.find_last_of("/\\");
-                    std::string fname = (slash != std::string::npos)
-                        ? path.substr(slash + 1) : path;
-                    char label[80];
-                    std::snprintf(label, sizeof(label), "%s $%04lX–$%04lX",
-                                  fname.c_str(), s, e2);
-
-                    ROM* rom = machine_.mountROM(
-                        static_cast<uint16_t>(s),
-                        static_cast<uint16_t>(e2),
-                        label, path);
-
-                    if (rom) {
-                        char msg[120];
-                        std::snprintf(msg, sizeof(msg),
-                            "Loaded %zu bytes at $%04lX–$%04lX",
-                            rom->dataSize(), s, e2);
-                        designerRomMsg_ = msg;
+                    if (fileSize == 0) {
+                        designerRomMsg_.setErr("File has no data");
                     } else {
-                        designerRomMsg_ = "Failed to load file";
+                        unsigned long e2 = s + fileSize - 1;
+                        if (e2 > 0xFFFF) e2 = 0xFFFF;
+
+                        auto slash = path.find_last_of("/\\");
+                        std::string fname = (slash != std::string::npos)
+                            ? path.substr(slash + 1) : path;
+                        char label[80];
+                        std::snprintf(label, sizeof(label), "%s $%04lX–$%04lX",
+                                      fname.c_str(), s, e2);
+
+                        ROM* rom = machine_.mountROM(
+                            static_cast<uint16_t>(s), static_cast<uint16_t>(e2),
+                            label, path);
+
+                        if (rom) {
+                            char msg[120];
+                            std::snprintf(msg, sizeof(msg),
+                                "Loaded %zu bytes at $%04lX–$%04lX",
+                                rom->dataSize(), s, e2);
+                            designerRomMsg_.setOk(msg);
+                        } else {
+                            designerRomMsg_.setErr("Failed to load file");
+                        }
                     }
                 }
             }
@@ -1358,25 +1358,25 @@ void Application::drawMachineDesigner() {
 
     if (!designerRomMsg_.empty()) {
         ImGui::SameLine();
-        const bool isErr = designerRomMsg_.rfind("Failed", 0) == 0 ||
-                           designerRomMsg_.rfind("Invalid", 0) == 0 ||
-                           designerRomMsg_.rfind("Cannot", 0) == 0;
-        if (isErr)
-            ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", designerRomMsg_.c_str());
+        if (designerRomMsg_.isErr)
+            ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", designerRomMsg_.text.c_str());
         else
-            ImGui::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s", designerRomMsg_.c_str());
+            ImGui::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s", designerRomMsg_.text.c_str());
     }
+}
 
-    // ---- Add Banked RAM ----
+// ---------------------------------------------------------------------------
+
+void Application::drawDesignerAddBankedRam() {
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "Add Banked RAM");
     ImGui::Spacing();
 
-    if (designerBankStart_[0] == '\0') std::strncpy(designerBankStart_, "8000", 5);
-    if (designerBankEnd_[0]   == '\0') std::strncpy(designerBankEnd_,   "BFFF", 5);
+    if (designerBankStart_[0]   == '\0') std::strncpy(designerBankStart_,   "8000", 5);
+    if (designerBankEnd_[0]     == '\0') std::strncpy(designerBankEnd_,     "BFFF", 5);
     if (designerBankSelAddr_[0] == '\0') std::strncpy(designerBankSelAddr_, "DFFF", 5);
-    if (designerBankCount_[0] == '\0') std::strncpy(designerBankCount_, "4",   4);
+    if (designerBankCount_[0]   == '\0') std::strncpy(designerBankCount_,   "4",    4);
 
     ImGui::TextUnformatted("Start:");
     ImGui::SameLine();
@@ -1410,7 +1410,7 @@ void Application::drawMachineDesigner() {
         int           n  = std::atoi(designerBankCount_);
 
         if (s > 0xFFFF || e2 > 0xFFFF || e2 < s || p > 0xFFFF || n < 1 || n > 256) {
-            designerBankMsg_ = "Invalid parameters";
+            designerBankMsg_.setErr("Invalid parameters");
         } else {
             BankedMemory* bm = machine_.mountBankedMemory(
                 static_cast<uint16_t>(s), static_cast<uint16_t>(e2),
@@ -1419,24 +1419,25 @@ void Application::drawMachineDesigner() {
                 char msg[80];
                 std::snprintf(msg, sizeof(msg), "Mounted %d banks × %lu KB at $%04lX–$%04lX",
                               n, (e2 - s + 1) / 1024, s, e2);
-                designerBankMsg_ = msg;
+                designerBankMsg_.setOk(msg);
             } else {
-                designerBankMsg_ = "Failed to create banked RAM";
+                designerBankMsg_.setErr("Failed to create banked RAM");
             }
         }
     }
 
     if (!designerBankMsg_.empty()) {
         ImGui::SameLine();
-        const bool isErr = designerBankMsg_.rfind("Failed", 0) == 0 ||
-                           designerBankMsg_.rfind("Invalid", 0) == 0;
-        if (isErr)
-            ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", designerBankMsg_.c_str());
+        if (designerBankMsg_.isErr)
+            ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", designerBankMsg_.text.c_str());
         else
-            ImGui::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s", designerBankMsg_.c_str());
+            ImGui::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s", designerBankMsg_.text.c_str());
     }
+}
 
-    // ---- Add Switchable Region ----
+// ---------------------------------------------------------------------------
+
+void Application::drawDesignerAddSwitchableRegion() {
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "Add Switchable Region");
@@ -1467,10 +1468,10 @@ void Application::drawMachineDesigner() {
     ImGui::Spacing();
     if (ImGui::Button("Add Switchable Region")) {
         char* ep = nullptr;
-        unsigned long s = std::strtoul(designerSRStart_, &ep, 16);
-        unsigned long e2 = std::strtoul(designerSREnd_,  &ep, 16);
+        unsigned long s  = std::strtoul(designerSRStart_, &ep, 16);
+        unsigned long e2 = std::strtoul(designerSREnd_,   &ep, 16);
         if (s > 0xFFFF || e2 > 0xFFFF || e2 < s) {
-            designerSRMsg_ = "Invalid range";
+            designerSRMsg_.setErr("Invalid range");
         } else {
             char label[32];
             std::snprintf(label, sizeof(label), "SwitchableRegion $%04lX-$%04lX", s, e2);
@@ -1478,20 +1479,22 @@ void Application::drawMachineDesigner() {
                 static_cast<uint16_t>(s), static_cast<uint16_t>(e2), label);
             char msg[48];
             std::snprintf(msg, sizeof(msg), "Added at $%04lX-$%04lX", s, e2);
-            designerSRMsg_ = msg;
+            designerSRMsg_.setOk(msg);
         }
     }
 
     if (!designerSRMsg_.empty()) {
         ImGui::SameLine();
-        const bool isErr = designerSRMsg_.rfind("Invalid", 0) == 0;
-        if (isErr)
-            ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", designerSRMsg_.c_str());
+        if (designerSRMsg_.isErr)
+            ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", designerSRMsg_.text.c_str());
         else
-            ImGui::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s", designerSRMsg_.c_str());
+            ImGui::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s", designerSRMsg_.text.c_str());
     }
+}
 
-    // ---- Add Bank Controller ----
+// ---------------------------------------------------------------------------
+
+void Application::drawDesignerAddBankController() {
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::TextColored({ 0.4f, 0.8f, 1.0f, 1.0f }, "Add Bank Controller");
@@ -1517,27 +1520,24 @@ void Application::drawMachineDesigner() {
         char* ep = nullptr;
         unsigned long a = std::strtoul(designerBCAddr_, &ep, 16);
         if (ep == designerBCAddr_ || a > 0xFFFF) {
-            designerBCMsg_ = "Invalid address";
+            designerBCMsg_.setErr("Invalid address");
         } else {
             char label[32];
             std::snprintf(label, sizeof(label), "BankController $%04lX", a);
             machine_.mountBankController(static_cast<uint16_t>(a), label);
             char msg[40];
             std::snprintf(msg, sizeof(msg), "Added at $%04lX", a);
-            designerBCMsg_ = msg;
+            designerBCMsg_.setOk(msg);
         }
     }
 
     if (!designerBCMsg_.empty()) {
         ImGui::SameLine();
-        const bool isErr = designerBCMsg_.rfind("Invalid", 0) == 0;
-        if (isErr)
-            ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", designerBCMsg_.c_str());
+        if (designerBCMsg_.isErr)
+            ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "%s", designerBCMsg_.text.c_str());
         else
-            ImGui::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s", designerBCMsg_.c_str());
+            ImGui::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s", designerBCMsg_.text.c_str());
     }
-
-    ImGui::End();
 }
 
 // ---------------------------------------------------------------------------

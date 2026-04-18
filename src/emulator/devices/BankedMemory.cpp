@@ -32,7 +32,10 @@ void BankedMemory::write(uint16_t offset, uint8_t value) {
 std::string BankedMemory::statusLine() const {
     std::ostringstream ss;
     ss << "Bank " << static_cast<int>(currentBank_)
-       << " / " << static_cast<int>(numBanks_)
-       << "  (" << (bankSize_ / 1024) << " KB each)";
+       << " / " << static_cast<int>(numBanks_);
+    if (bankSize_ >= 1024)
+        ss << "  (" << (bankSize_ / 1024) << " KB each)";
+    else
+        ss << "  (" << bankSize_ << " B each)";
     return ss.str();
 }
