@@ -35,6 +35,22 @@ struct PresetInfo {
 #include "emulator/core/IBusDevice.h"
 #include "emulator/core/Machine.h"
 #include "imgui_memory_editor.h"
+#include <functional>
+
+// ---------------------------------------------------------------------------
+// PresetDriver — bundles everything Application needs to activate one preset
+// type.  Add a new entry to kPresetDrivers[] in Application.cpp to support a
+// new machine without touching any existing dispatch logic.
+// ---------------------------------------------------------------------------
+struct PresetDriver {
+    std::string presetType;    // must match PresetInfo::presetType from JSON
+    bool        resetScreenTex = false;  // true when the screen texture dimensions change
+    std::function<MachineConfigResult(
+        Machine&,
+        const std::unordered_map<std::string, std::string>& romPaths,
+        bool keyMatrixTranspose)> build;
+    std::unordered_map<uint16_t, std::string> disasmLabels;
+};
 
 class Application {
 public:
@@ -214,7 +230,6 @@ private:
     void drawBreakpoints();
     void drawWatchpoints();
     void rebuildMemRegionColors();
-    void setDisasmLabels(const std::string& presetType);
     void drawMemoryViewer();
     void drawMachineDesigner();
     void drawDesignerCpuSection();

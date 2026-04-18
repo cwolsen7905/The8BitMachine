@@ -371,7 +371,8 @@ void Application::drawMenuBar() {
             machine_.resetAddressMap();
             machine_.reset();
             screenTexW_ = 0; screenTexH_ = 0;
-            setDisasmLabels("");
+            disasmLabels_.clear();
+            disasmLabels_[Bus::CHAR_OUT_ADDR] = "CHAR_OUT";
             allowRomEdit_    = false;
             memColorsDirty_  = true;
         }
@@ -915,6 +916,75 @@ void Application::drawDisassembler() {
 // ---------------------------------------------------------------------------
 
 namespace {
+    // -----------------------------------------------------------------------
+    // Preset driver table — one entry per preset type.
+    // To add a new preset: implement Machine::buildXxxPreset(), then add an
+    // entry here.  No other dispatch code needs to change.
+    // -----------------------------------------------------------------------
+    const PresetDriver kPresetDrivers[] = {
+        {
+            "c64",
+            /*resetScreenTex=*/false,
+            [](Machine& m, const auto& roms, bool transpose) {
+                return m.buildC64Preset(
+                    roms.count("kernal") ? roms.at("kernal") : "",
+                    roms.count("basic")  ? roms.at("basic")  : "",
+                    roms.count("char")   ? roms.at("char")   : "",
+                    transpose);
+            },
+            {
+                { 0x0314, "IRQ-Vec" },
+                { 0x0316, "NMI-Vec" },
+                { 0xFF81, "CINT"    },
+                { 0xFF84, "IOINIT"  },
+                { 0xFF87, "RAMTAS"  },
+                { 0xFF8A, "RESTOR"  },
+                { 0xFF8D, "VECTOR"  },
+                { 0xFFD2, "CHROUT"  },
+                { 0xFFE4, "GETIN"   },
+                { 0xFFFA, "NMI"     },
+                { 0xFFFC, "RESET"   },
+                { 0xFFFE, "IRQ"     },
+            }
+        },
+        {
+            "spectrum48",
+            /*resetScreenTex=*/true,
+            [](Machine& m, const auto& roms, bool) {
+                return m.buildSpectrumPreset(roms.count("rom") ? roms.at("rom") : "");
+            },
+            {
+                { 0x0000, "RESET"  },
+                { 0x0038, "IRQ"    },
+                { 0x0066, "NMI"    },
+                { 0x4000, "BITMAP" },
+                { 0x5800, "ATTRS"  },
+            }
+        },
+        {
+            "apple2e",
+            /*resetScreenTex=*/true,
+            [](Machine& m, const auto& roms, bool) {
+                return m.buildAppleIIePreset(roms.count("rom") ? roms.at("rom") : "");
+            },
+            {
+                { 0xC000, "KBD"      },
+                { 0xC010, "KBDSTRB"  },
+                { 0xC050, "GRAPHICS" },
+                { 0xC051, "TEXT"     },
+                { 0xC052, "FULLSCR"  },
+                { 0xC053, "MIXED"    },
+                { 0xC054, "PAGE1"    },
+                { 0xC055, "PAGE2"    },
+                { 0xC056, "LORES"    },
+                { 0xC057, "HIRES"    },
+                { 0xFFFA, "NMI"      },
+                { 0xFFFC, "RESET"    },
+                { 0xFFFE, "IRQ"      },
+            }
+        },
+    };
+
     struct DesignerKnownDev { const char* id; const char* name; const char* defStart; const char* defEnd; };
     static constexpr DesignerKnownDev kDesignerKnown[] = {
         { "vic",          "VIC-IIe (MOS 6566)",         "D000", "D3FF" },
@@ -1831,31 +1901,29 @@ void Application::buildActivePreset() {
     if (activePresetIdx_ < 0 || activePresetIdx_ >= (int)presets_.size()) return;
     const PresetInfo& preset = presets_[activePresetIdx_];
 
-    MachineConfigResult result;
+    const PresetDriver* driver = nullptr;
+    for (const auto& d : kPresetDrivers)
+        if (d.presetType == preset.presetType) { driver = &d; break; }
 
-    if (preset.presetType == "c64") {
-        result = machine_.buildC64Preset(
-            presetRomPaths_["kernal"],
-            presetRomPaths_["basic"],
-            presetRomPaths_["char"],
-            keyMatrixTranspose_);
-    } else if (preset.presetType == "spectrum48") {
-        result = machine_.buildSpectrumPreset(presetRomPaths_["rom"]);
-        screenTexW_ = screenTexH_ = 0;
-    } else if (preset.presetType == "apple2e") {
-        result = machine_.buildAppleIIePreset(presetRomPaths_["rom"]);
-        screenTexW_ = screenTexH_ = 0;
-    } else {
+    if (!driver) {
         presetMsg_ = "[Preset] Unknown preset type: " + preset.presetType;
         return;
     }
+
+    if (driver->resetScreenTex)
+        screenTexW_ = screenTexH_ = 0;
+
+    MachineConfigResult result = driver->build(machine_, presetRomPaths_, keyMatrixTranspose_);
 
     presetMsg_ = result.message;
     if (result.ok) {
         cyclesPerFrame_  = preset.cyclesPerFrame > 0 ? preset.cyclesPerFrame : 16'667;
         cycleCount_      = 0;
         emulatorRunning_ = false;
-        setDisasmLabels(preset.presetType);
+        disasmLabels_.clear();
+        disasmLabels_[Bus::CHAR_OUT_ADDR] = "CHAR_OUT";
+        for (const auto& [addr, label] : driver->disasmLabels)
+            disasmLabels_[addr] = label;
         allowRomEdit_   = false;
         memColorsDirty_ = true;
         termPrint(result.message);
@@ -1867,46 +1935,6 @@ void Application::buildActivePreset() {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-void Application::setDisasmLabels(const std::string& presetType) {
-    disasmLabels_.clear();
-    disasmLabels_[Bus::CHAR_OUT_ADDR] = "CHAR_OUT";
-
-    if (presetType == "c64") {
-        disasmLabels_[0x0314] = "IRQ-Vec";
-        disasmLabels_[0x0316] = "NMI-Vec";
-        disasmLabels_[0xFF81] = "CINT";
-        disasmLabels_[0xFF84] = "IOINIT";
-        disasmLabels_[0xFF87] = "RAMTAS";
-        disasmLabels_[0xFF8A] = "RESTOR";
-        disasmLabels_[0xFF8D] = "VECTOR";
-        disasmLabels_[0xFFD2] = "CHROUT";
-        disasmLabels_[0xFFE4] = "GETIN";
-        disasmLabels_[0xFFFA] = "NMI";
-        disasmLabels_[0xFFFC] = "RESET";
-        disasmLabels_[0xFFFE] = "IRQ";
-    } else if (presetType == "spectrum48") {
-        disasmLabels_[0x0000] = "RESET";
-        disasmLabels_[0x0038] = "IRQ";
-        disasmLabels_[0x0066] = "NMI";
-        disasmLabels_[0x4000] = "BITMAP";
-        disasmLabels_[0x5800] = "ATTRS";
-    } else if (presetType == "apple2e") {
-        disasmLabels_[0xC000] = "KBD";
-        disasmLabels_[0xC010] = "KBDSTRB";
-        disasmLabels_[0xC050] = "GRAPHICS";
-        disasmLabels_[0xC051] = "TEXT";
-        disasmLabels_[0xC052] = "FULLSCR";
-        disasmLabels_[0xC053] = "MIXED";
-        disasmLabels_[0xC054] = "PAGE1";
-        disasmLabels_[0xC055] = "PAGE2";
-        disasmLabels_[0xC056] = "LORES";
-        disasmLabels_[0xC057] = "HIRES";
-        disasmLabels_[0xFFFA] = "NMI";
-        disasmLabels_[0xFFFC] = "RESET";
-        disasmLabels_[0xFFFE] = "IRQ";
-    }
-}
 
 void Application::rebuildMemRegionColors() {
     std::memset(memRegionColors_, 0, sizeof(memRegionColors_));
