@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **VIC panel ImGui ID conflict** — five colour-swatch `ColorButton` calls shared the same `"##c"` ID; each row now wraps with `PushID(regIdx)` / `PopID()` to give each button a unique identity and suppress the Dear ImGui assertion
+
+---
+
 ## [0.29.0] - 2026-04-17
 
 ### Added
