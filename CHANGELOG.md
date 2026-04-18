@@ -8,8 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Apple IIe preset** — `presets/apple2e.json`; ROM picker loads a 12 KB, 16 KB, or 32 KB Apple IIe ROM image; mounts 48 KB RAM at `$0000–$BFFF`, `AppleIIIO` at `$C000–$C0FF`, ROM at `$C000–$FFFF`; switches CPU to WDC 65C02; preset auto-sets ~1 MHz (17 030 cycles/frame)
+- **`AppleIIVideo` device** — 280×192 green-phosphor framebuffer; text mode: 40×24 characters from embedded 128-character ROM with inverse and flash; hi-res mode: monochrome 280×192 pixel rendering; mixed mode: bottom 4 rows text, rest hi-res; soft switches `$C050–$C057` select graphics/text, page 1/2, lo-res/hi-res
+- **`AppleIIIO` device** — keyboard latch at `$C000` (bit 7 = strobe), strobe clear at `$C010`, soft-switch activation on reads/writes `$C050–$C057`; `pressKey(ascii)` sets the latch with the strobe bit set
+- **ROM `skipBytes` parameter** — `ROM::loadFromFile()` now accepts an optional byte-count to skip before reading; used by the Apple IIe preset to load the upper 16 KB of a 32 KB ROM image
+- **Apple IIe ROM auto-detection** — `buildAppleIIePreset()` probes the file size: 12 KB → mount at `$D000–$FFFF`; 16 KB → `$C000–$FFFF`; 32 KB → skip first 16 KB, mount at `$C000–$FFFF`; ROM label shows the actual start address
+- **Session persistence** — machine config is auto-saved to the OS user-data directory (`SDL_GetPrefPath`) on exit and auto-loaded on startup; last-used machine and ROM paths are restored without any manual save step
+- **F10 auto-pause** — pressing Step (F10) or clicking the Step button while the emulator is running now pauses the emulator first, then steps one instruction
+- **Author and copyright in About dialog** — About → The 8-Bit Machine now shows author name, email, and copyright year
+
 ### Fixed
 - **VIC panel ImGui ID conflict** — five colour-swatch `ColorButton` calls shared the same `"##c"` ID; each row now wraps with `PushID(regIdx)` / `PopID()` to give each button a unique identity and suppress the Dear ImGui assertion
+- **Spectrum 48K config round-trip** — `loadConfig()` previously only handled the `"c64"` preset type and returned an error for `"spectrum48"`; preset type is now dispatched correctly so saved Spectrum configs reload properly
+- **Contained Devices after device removal** — `unmountAt()` removed devices from the bus and from `dynamicDevices_` but not from `activeFixedDevices_`; removed devices now correctly disappear from the Contained Devices panel
+- **Screen panel spurious scrollbar** — a `scale >= 1.0f` floor caused the framebuffer image to overflow the panel at certain window sizes; replaced with `SetNextWindowSizeConstraints` (native-resolution minimum) + `ImGuiWindowFlags_NoScrollbar` so the panel resizes cleanly without a scrollbar
 
 ---
 

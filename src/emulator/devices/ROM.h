@@ -18,8 +18,9 @@ public:
 
     // Load from file.  Returns false if the file cannot be opened.
     // .prg files: the 2-byte load-address header is stripped; the raw
-    // program bytes are stored.
-    bool loadFromFile(const std::string& path);
+    // program bytes are stored.  skipBytes skips additional bytes before
+    // the data (used e.g. to load only the upper half of a 32 KB ROM image).
+    bool loadFromFile(const std::string& path, size_t skipBytes = 0);
 
     const std::string& filePath() const { return filePath_; }
     size_t             dataSize() const { return data_.size(); }

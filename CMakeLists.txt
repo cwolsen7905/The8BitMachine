@@ -109,6 +109,8 @@ set(SOURCES
     src/emulator/devices/SwitchableRegion.cpp
     src/emulator/devices/CIA6526.cpp
     src/emulator/devices/ULA.cpp
+    src/emulator/devices/AppleIIVideo.cpp
+    src/emulator/devices/AppleIIIO.cpp
     src/emulator/devices/Memory.cpp
     src/emulator/devices/ROM.cpp
     src/emulator/devices/SID6581.cpp

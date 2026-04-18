@@ -78,6 +78,9 @@ Zilog Z80:
 - **SID6581 at `$D400–$D7FF`** — all 29 MOS 6581/8580 registers; SDL audio output at 44100 Hz; triangle/sawtooth/pulse/noise waveforms with correct 23-bit LFSR; full ADSR envelopes with datasheet-accurate timing; master volume; Machine Designer shows volume, filter cutoff, and voice 1 frequency
 - **ZX Spectrum 48K preset** — `presets/spectrum48.json`; ROM picker loads the 16 KB Spectrum ROM at `$0000–$3FFF`; 48 KB RAM at `$4000–$FFFF`; Zilog Z80 CPU; ULA device handles display, keyboard, and frame interrupt
 - **ULA (ZX Spectrum ULA)** — 352×272 RGBA framebuffer; pixel data decoded from `$4000` using the Spectrum address interleaving formula; 8×8 attribute cells at `$5800` (ink/paper/bright/flash); frame IRQ fired every 69 888 T-states (50 Hz at 3.5 MHz); port `$FE` read returns keyboard half-row, write sets border colour; flash toggles every 16 frames; drawPanel shows border colour, frame counter, flash state, and key matrix
+- **Apple IIe preset** — `presets/apple2e.json`; ROM picker auto-detects 12 KB, 16 KB, or 32 KB ROM images and mounts them at the correct address (`$D000` or `$C000`); 48 KB RAM at `$0000–$BFFF`; WDC 65C02 CPU at ~1 MHz
+- **AppleIIVideo** — 280×192 green-phosphor framebuffer; text mode: 40×24 characters from an embedded 128-character ROM with inverse and flash rendering; hi-res mode: monochrome 280×192 bitmap; mixed mode: bottom 4 rows text; page 1/2 soft switches
+- **AppleIIIO** — keyboard latch at `$C000`, strobe clear at `$C010`, soft switches at `$C050–$C057` (GRAPHICS/TEXT/FULLSCR/MIXED/PAGE1/PAGE2/LORES/HIRES); SDL key events translated to Apple II ASCII including shift and control
 - **CHAR_OUT port at `$F000`** — CPU writes here appear in the Terminal panel (line-buffered; flushed on LF)
 - **F10 instruction step** — runs the CPU until the current instruction completes
 - **Configurable clock speed** — Emulator → Speed presets: ~60 kHz (debug), ~500 kHz, ~1 MHz, ~2 MHz; effective MHz shown in the menu bar
@@ -222,6 +225,8 @@ Device instances are owned by `Machine`.  The default map is:
 - [x] **Machine Designer: Contained Devices** — chips inside container devices (VIC/SID/CIA inside C64IOSpace) shown in their own table with live computed addresses
 - [x] **Zilog Z80 CPU** — full instruction set (unprefixed + CB/ED/DD/FD/DDCB/FDCB prefixes), alternate registers, IX/IY indexed, IM 0/1/2, EI delay, NMI at `$0066`
 - [x] **ZX Spectrum 48K preset** — ULA display (256×192 + border), 16-colour pixel+attribute rendering, flash, 50 Hz frame IRQ, 8×5 keyboard matrix, border colour via port `$FE`
+- [x] **Apple IIe preset** — WDC 65C02 @ ~1 MHz; 48 KB RAM; `AppleIIIO` soft-switch dispatcher; `AppleIIVideo` text/hi-res framebuffer with embedded font and green phosphor palette; SDL keyboard → Apple II ASCII; 12/16/32 KB ROM auto-detection
+- [x] **Session persistence** — machine config auto-saved on exit and auto-loaded on startup via `SDL_GetPrefPath`; last-used ROM paths and address map are restored without a manual save step
 - [x] **File → New Machine** — blank-slate reset to default address map; clears active preset
 - [x] **Preset-scoped device clocking** — only active preset's chips are clocked/reset/shown in panels
 - [ ] C128 MMU model (configurable bank sizes, multi-region, hardware-accurate)

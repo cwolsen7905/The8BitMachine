@@ -13,6 +13,7 @@ Machine::Machine() : c64IOSpace_(&vic_, &sid_, &cia1_, &cia2_) {
     bus_.setNoAutoClk(&cia1_);
     bus_.setNoAutoClk(&cia2_);
     bus_.setNoAutoClk(&ula_);
+    bus_.setNoAutoClk(&appleIIVideo_);
 
     buildDefaultMap();
     cpu6510_.connectBus(&bus_);
@@ -21,6 +22,7 @@ Machine::Machine() : c64IOSpace_(&vic_, &sid_, &cia1_, &cia2_) {
     cpuZ80_.connectBus(&bus_);
     vic_.connectBus(&bus_);
     ula_.connectBus(&bus_);
+    appleIIVideo_.connectBus(&bus_);
 
     // Default screen shows VIC framebuffer
     activeScreen_ = { VIC6566::WIDTH, VIC6566::HEIGHT, vic_.framebuffer() };
@@ -255,6 +257,71 @@ void Machine::installULAKeyHandler() {
     };
 }
 
+// ---------------------------------------------------------------------------
+// Apple IIe key handler — converts SDL keycodes to Apple II ASCII
+// ---------------------------------------------------------------------------
+void Machine::installAppleIIKeyHandler() {
+    clearKeysHandler_ = [this]() { appleIIIO_.pressKey(0); };
+
+    auto shiftHeld = std::make_shared<bool>(false);
+    auto ctrlHeld  = std::make_shared<bool>(false);
+
+    keyHandler_ = [this, shiftHeld, ctrlHeld](int sym, bool pressed) {
+        // Track modifier keys
+        if (sym == SDLK_LSHIFT || sym == SDLK_RSHIFT) { *shiftHeld = pressed; return; }
+        if (sym == SDLK_LCTRL  || sym == SDLK_RCTRL)  { *ctrlHeld  = pressed; return; }
+        if (!pressed) return;  // Apple II keyboard only generates key-down events
+
+        uint8_t ascii = 0;
+
+        // Special keys
+        switch (sym) {
+            case SDLK_RETURN:    ascii = 0x0D; break;
+            case SDLK_BACKSPACE: ascii = 0x7F; break;
+            case SDLK_ESCAPE:    ascii = 0x1B; break;
+            case SDLK_TAB:       ascii = 0x09; break;
+            case SDLK_LEFT:      ascii = 0x08; break;
+            case SDLK_RIGHT:     ascii = 0x15; break;
+            case SDLK_UP:        ascii = 0x0B; break;
+            case SDLK_DOWN:      ascii = 0x0A; break;
+            default: break;
+        }
+
+        if (!ascii && sym >= 'a' && sym <= 'z') {
+            if (*ctrlHeld)
+                ascii = static_cast<uint8_t>(sym & 0x1F);
+            else if (*shiftHeld)
+                ascii = static_cast<uint8_t>(sym - 32);  // uppercase
+            else
+                ascii = static_cast<uint8_t>(sym);
+        }
+
+        // Printable non-letter keys
+        if (!ascii && sym >= 0x20 && sym < 0x7F) {
+            if (*shiftHeld) {
+                switch (sym) {
+                    case '1': ascii = '!'; break;  case '2': ascii = '@'; break;
+                    case '3': ascii = '#'; break;  case '4': ascii = '$'; break;
+                    case '5': ascii = '%'; break;  case '6': ascii = '^'; break;
+                    case '7': ascii = '&'; break;  case '8': ascii = '*'; break;
+                    case '9': ascii = '('; break;  case '0': ascii = ')'; break;
+                    case '-': ascii = '_'; break;  case '=': ascii = '+'; break;
+                    case '[': ascii = '{'; break;  case ']': ascii = '}'; break;
+                    case ';': ascii = ':'; break;  case '\'':ascii = '"'; break;
+                    case ',': ascii = '<'; break;  case '.': ascii = '>'; break;
+                    case '/': ascii = '?'; break;  case '\\':ascii = '|'; break;
+                    case '`': ascii = '~'; break;
+                    default:  ascii = static_cast<uint8_t>(sym); break;
+                }
+            } else {
+                ascii = static_cast<uint8_t>(sym);
+            }
+        }
+
+        if (ascii) appleIIIO_.pressKey(ascii);
+    };
+}
+
 void Machine::buildDefaultMap() {
     activeFixedDevices_ = { &vic_, &sid_, &cia1_, &cia2_ };
     installCIA1KeyHandler(false);  // default machine uses CIA1 with standard (no-transpose) mapping
@@ -372,6 +439,71 @@ void Machine::unmountAt(size_t busIndex) {
         if (fit != activeFixedDevices_.end())
             activeFixedDevices_.erase(fit);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Apple IIe preset
+// ---------------------------------------------------------------------------
+
+MachineConfigResult Machine::buildAppleIIePreset(const std::string& romPath) {
+    hasPreset_ = false;
+    bus_.clearDevices();
+    dynamicDevices_.clear();
+    activeFixedDevices_.clear();
+
+    // 48 KB RAM $0000-$BFFF
+    bus_.addDevice(0x0000, 0xBFFF, &ram_, "RAM $0000-$BFFF");
+
+    // I/O soft switches $C000-$C0FF (first on bus — takes priority over ROM)
+    bus_.addDevice(0xC000, 0xC0FF, &appleIIIO_, "Apple IIe I/O $C000-$C0FF");
+
+    // ROM mounting — auto-detect file size:
+    //   12 KB (0x3000): main ROM only → mount at $D000-$FFFF
+    //   16 KB (0x4000): full ROM      → mount at $C000-$FFFF
+    //   32 KB (0x8000): combined ROM  → skip first 16 KB, mount at $C000-$FFFF
+    size_t   romFileSize = 0;
+    size_t   romSkip     = 0;
+    uint16_t romStart    = 0xC000;
+    {
+        std::ifstream probe(romPath, std::ios::binary | std::ios::ate);
+        if (probe) romFileSize = static_cast<size_t>(probe.tellg());
+    }
+    if      (romFileSize == 0x8000) { romSkip = 0x4000; romStart = 0xC000; }
+    else if (romFileSize == 0x3000) {                   romStart = 0xD000; }
+
+    char romLabel[40];
+    std::snprintf(romLabel, sizeof(romLabel), "Apple IIe ROM $%04X-$FFFF", romStart);
+    auto romObj = std::make_unique<ROM>(romLabel);
+    if (!romObj->loadFromFile(romPath, romSkip))
+        return { false, "Cannot load Apple IIe ROM: " + romPath };
+    ROM* rom = romObj.get();
+    dynamicDevices_.push_back(std::move(romObj));
+    bus_.addDevice(romStart, 0xFFFF, rom, romLabel);
+
+    // Wire soft-switch callbacks from IO → video
+    appleIIIO_.onTextMode = [this](bool t) { appleIIVideo_.setTextMode(t); };
+    appleIIIO_.onPage2    = [this](bool p) { appleIIVideo_.setPage2(p);    };
+    appleIIIO_.onHiRes    = [this](bool h) { appleIIVideo_.setHiRes(h);    };
+    appleIIIO_.onMixed    = [this](bool m) { appleIIVideo_.setMixed(m);    };
+
+    appleIIIO_.reset();
+    appleIIVideo_.reset();
+
+    // Switch to WDC 65C02 and reset
+    activeCpu_ = &cpu65c02_;
+    activeCpu_->reset();
+
+    activeFixedDevices_ = { &appleIIVideo_ };
+    installAppleIIKeyHandler();
+
+    activeScreen_ = { AppleIIVideo::WIDTH, AppleIIVideo::HEIGHT,
+                      appleIIVideo_.framebuffer() };
+
+    hasPreset_         = true;
+    preset_.name       = "apple2e";
+    preset_.kernalPath = romPath;
+
+    return { true, "Apple IIe preset built." };
 }
 
 // ---------------------------------------------------------------------------
@@ -522,8 +654,10 @@ const char* Machine::idForDevice(const IBusDevice* dev) const {
     if (dev == &cia1_)       return "cia1";
     if (dev == &cia2_)       return "cia2";
     if (dev == &ram_)        return "ram";
-    if (dev == &ula_)         return "ula";
-    if (dev == &c64IOSpace_) return "c64_io_space";
+    if (dev == &ula_)          return "ula";
+    if (dev == &appleIIVideo_) return "apple2e_video";
+    if (dev == &appleIIIO_)    return "apple2e_io";
+    if (dev == &c64IOSpace_)   return "c64_io_space";
     if (dev == nullptr)      return "char_out";
     for (const auto& d : dynamicDevices_) {
         if (d.get() != dev) continue;
@@ -542,8 +676,10 @@ IBusDevice* Machine::deviceForId(const std::string& id) {
     if (id == "cia1")         return &cia1_;
     if (id == "cia2")         return &cia2_;
     if (id == "ram")          return &ram_;
-    if (id == "ula")          return &ula_;
-    if (id == "c64_io_space") return &c64IOSpace_;
+    if (id == "ula")           return &ula_;
+    if (id == "apple2e_video") return &appleIIVideo_;
+    if (id == "apple2e_io")    return &appleIIIO_;
+    if (id == "c64_io_space")  return &c64IOSpace_;
     if (id == "char_out")     return nullptr;
     return nullptr;
 }
@@ -667,6 +803,26 @@ MachineConfigResult Machine::loadConfig(const std::string& path) {
             result.hasPreset          = true;
             result.keyMatrixTranspose = xpose;
             result.cyclesPerFrame     = root.value("cycles_per_frame", 0);
+            return result;
+        }
+        if (preset == "spectrum48") {
+            const auto& pc  = root["preset_config"];
+            const std::string rom = pc.value("kernal", "");
+            auto result = buildSpectrumPreset(rom);
+            if (!result.ok) return result;
+            result.message        = "[Config] Loaded: " + path + "  (preset: Spectrum 48K)";
+            result.hasPreset      = true;
+            result.cyclesPerFrame = root.value("cycles_per_frame", 0);
+            return result;
+        }
+        if (preset == "apple2e") {
+            const auto& pc  = root["preset_config"];
+            const std::string rom = pc.value("kernal", "");
+            auto result = buildAppleIIePreset(rom);
+            if (!result.ok) return result;
+            result.message        = "[Config] Loaded: " + path + "  (preset: Apple IIe)";
+            result.hasPreset      = true;
+            result.cyclesPerFrame = root.value("cycles_per_frame", 0);
             return result;
         }
         return { false, "[Config] Error: unknown preset '" + preset + "'" };

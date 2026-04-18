@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "preset_type": "apple2e",
+  "name": "Apple IIe",
+  "description": "WDC 65C02 @ 1 MHz · Text/Hi-Res Video · 48 KB RAM · 16 KB ROM\nProvide a 16 KB ROM image covering $C000-$FFFF.",
+  "cpu": "WDC 65C02",
+  "cycles_per_frame": 17030,
+  "key_matrix_transpose": false,
+  "roms": [
+    { "key": "rom", "label": "ROM", "description": "16 KB Apple IIe ROM image ($C000-$FFFF)" }
+  ]
+}

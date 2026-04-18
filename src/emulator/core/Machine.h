@@ -12,6 +12,8 @@
 #include "emulator/devices/SID6581.h"
 #include "emulator/devices/ULA.h"
 #include "emulator/devices/VIC6566.h"
+#include "emulator/devices/AppleIIVideo.h"
+#include "emulator/devices/AppleIIIO.h"
 #include "emulator/cpu/CPU6510.h"
 #include "emulator/cpu/CPU8502.h"
 #include "emulator/cpu/CPU65C02.h"
@@ -75,7 +77,9 @@ public:
     CIA6526& cia2()   { return cia2_; }
     VIC6566& vic()    { return vic_; }
     SID6581& sid()    { return sid_; }
-    ULA&     ula()    { return ula_; }
+    ULA&          ula()          { return ula_; }
+    AppleIIVideo& appleIIVideo() { return appleIIVideo_; }
+    AppleIIIO&    appleIIIO()    { return appleIIIO_; }
     CPU6510& cpu6510(){ return cpu6510_; }
     CPUZ80&  cpuZ80() { return cpuZ80_; }
 
@@ -125,6 +129,7 @@ public:
     // Build a ZX Spectrum 48K memory map.  Loads the 16 KB ROM from romPath.
     // Switches the CPU to Zilog Z80, wires the ULA port handlers, and resets.
     MachineConfigResult buildSpectrumPreset(const std::string& romPath);
+    MachineConfigResult buildAppleIIePreset(const std::string& romPath);
 
     MachineConfigResult buildC64Preset(const std::string& kernalPath,
                                        const std::string& basicPath,
@@ -184,13 +189,15 @@ public:
     const char* idForDevice(const IBusDevice* dev) const;
 
 private:
-    Memory     ram_;
-    CIA6526    cia1_;
-    CIA6526    cia2_;
-    VIC6566    vic_;
-    SID6581    sid_;
-    ULA        ula_;
-    C64IOSpace c64IOSpace_;  // pre-wired to the four fixed chips above
+    Memory       ram_;
+    CIA6526      cia1_;
+    CIA6526      cia2_;
+    VIC6566      vic_;
+    SID6581      sid_;
+    ULA          ula_;
+    AppleIIVideo appleIIVideo_;
+    AppleIIIO    appleIIIO_;
+    C64IOSpace   c64IOSpace_;  // pre-wired to the four fixed chips above
 
     CPU6510  cpu6510_;
     CPU8502  cpu8502_;
@@ -205,6 +212,7 @@ private:
     void buildDefaultMap();
     void installCIA1KeyHandler(bool transpose);
     void installULAKeyHandler();
+    void installAppleIIKeyHandler();
 
     std::vector<std::unique_ptr<IBusDevice>> dynamicDevices_;
 

@@ -1678,7 +1678,9 @@ void Application::buildActivePreset() {
             keyMatrixTranspose_);
     } else if (preset.presetType == "spectrum48") {
         result = machine_.buildSpectrumPreset(presetRomPaths_["rom"]);
-        // Reset active screen texture dimensions to force GPU texture recreation
+        screenTexW_ = screenTexH_ = 0;
+    } else if (preset.presetType == "apple2e") {
+        result = machine_.buildAppleIIePreset(presetRomPaths_["rom"]);
         screenTexW_ = screenTexH_ = 0;
     } else {
         presetMsg_ = "[Preset] Unknown preset type: " + preset.presetType;

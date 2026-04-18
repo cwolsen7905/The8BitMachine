@@ -9,6 +9,6 @@ imgui_layout.ini
 .DS_Store
 
 # Generated ROM files (assembled by build.sh)
-roms/*.prg
-roms/*.bin
-roms/*.raw
+roms/*/*.prg
+roms/*/*.bin
+roms/*/*.raw
