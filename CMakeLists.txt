@@ -94,6 +94,9 @@ endif()
 set(SOURCES
     src/main.cpp
     src/gui/Application.cpp
+    src/gui/Application_Debugger.cpp
+    src/gui/Application_Designer.cpp
+    src/gui/Application_Presets.cpp
     src/emulator/core/Bus.cpp
     src/emulator/core/Machine.cpp
     src/emulator/cpu/CPU6502Base.cpp
