@@ -107,8 +107,9 @@ MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
     installCIA1KeyHandler(keyMatrixTranspose);
 
     // Record preset so saveConfig can serialise it instead of the device list.
-    hasPreset_ = true;
-    preset_    = { "c64", kernalPath, basicPath, charPath, keyMatrixTranspose };
+    hasPreset_    = true;
+    preset_       = { "c64", kernalPath, basicPath, charPath, keyMatrixTranspose };
+    activeScreen_ = { VIC6566::WIDTH, VIC6566::HEIGHT, vic_.framebuffer() };
 
     return { true, "[C64] Machine ready — press F8 to reset, F5 to run" };
 }

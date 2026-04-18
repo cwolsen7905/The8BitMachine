@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Screen not switching when loading a second preset** — `buildC64Preset()` never set `activeScreen_`, so switching from Apple IIe → C64 left the Apple II framebuffer displayed; `activeScreen_` is now set to the VIC framebuffer at the end of a successful C64 preset build
+
 ### Added
 - **Disassembler labels** — known addresses shown as dim `; LABEL` annotations in the instruction column; labels also appear when an instruction's operand *references* a known address (e.g. `JSR $FFD2` shows `; CHROUT`, `BIT $C010` shows `; KBDSTRB`); resolved via a new `targetAddr`/`hasTarget` field in `DisasmLine` populated for ABS, ABX, ABY, IND, ZP, and REL modes; `$F000=CHAR_OUT` on all machines; C64 adds KERNAL jump table (`CHROUT`, `GETIN`, `CINT`, `IOINIT`, `RAMTAS`, `RESTOR`, `VECTOR`) and vectors (`RESET`, `IRQ`, `NMI`, `IRQ-Vec`, `NMI-Vec`); Spectrum adds `RESET`, `IRQ`, `NMI`, `BITMAP`, `ATTRS`; Apple IIe adds soft switches (`GRAPHICS`–`HIRES`, `PAGE1`/`PAGE2`, `KBD`, `KBDSTRB`) and vectors; cleared to CHAR_OUT-only on New Machine
 - **Watchpoints** (Debug → Watchpoints) — dockable panel; add a memory address and choose Read, Write, or both; emulator halts and prints `[Watchpoint] $XXXX READ/WRITE` + CPU state to the terminal when the condition is met; `x` removes individual entries, Clear All removes all; duplicate addresses are rejected; implemented via a `Bus::onAccess` callback (fires after every matched read/write, excluded from open-bus and CHAR_OUT)
