@@ -1,6 +1,7 @@
 #pragma once
 
 #include "emulator/core/IBusDevice.h"
+#include "emulator/core/IHasPanel.h"
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -26,7 +27,7 @@ class Bus;
 // (one call per T-state).  Machine::buildSpectrumPreset() wires the port
 // callbacks to CPUZ80::setPortHandlers().
 // ---------------------------------------------------------------------------
-class ULA : public IBusDevice {
+class ULA : public IBusDevice, public IHasPanel {
 public:
     static constexpr int WIDTH  = 352;   // 48 + 256 + 48
     static constexpr int HEIGHT = 272;   // 40 + 192 + 40
@@ -50,9 +51,10 @@ public:
     void    clock()                          override;
     uint8_t read (uint16_t)            const override { return 0xFF; }
     void    write(uint16_t, uint8_t)         override {}
-    bool    hasPanel()                 const override { return true; }
-    void    drawPanel(const char* title, bool* open) override;
     std::string statusLine()           const override;
+
+    // IHasPanel
+    void    drawPanel(const char* title, bool* open) override;
 
     // -----------------------------------------------------------------------
     // Port I/O — called by CPUZ80 port handlers set in buildSpectrumPreset

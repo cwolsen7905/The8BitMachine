@@ -1,6 +1,7 @@
 #pragma once
 
 #include "emulator/core/IBusDevice.h"
+#include "emulator/core/IHasPanel.h"
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -25,18 +26,19 @@
 // TOD: reading $0B latches the time until $08 is read; alarm fires ICR bit 2
 // ---------------------------------------------------------------------------
 
-class CIA6526 : public IBusDevice {
+class CIA6526 : public IBusDevice, public IHasPanel {
 public:
     CIA6526() { reset(); }
 
-    // IBusDevice interface
+    // IBusDevice
     const char* deviceName() const override { return "MOS 6526 CIA"; }
     void        reset()            override;
     void        clock()            override;
     uint8_t     read (uint16_t offset) const override;
     void        write(uint16_t offset, uint8_t value) override;
     std::string statusLine() const override;
-    bool        hasPanel()  const override { return true; }
+
+    // IHasPanel
     void        drawPanel(const char* title, bool* open) override;
 
     // Callback fired when an unmasked interrupt fires.

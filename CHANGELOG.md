@@ -22,6 +22,7 @@ Releases are tagged on the `main` branch; active development happens on `dev`.
   - `size_t` underflow guard added in ROM load preview when a PRG file contains only the 2-byte header (now sets an explicit "File has no data" error)
   - `BankedMemory::statusLine()` now shows bytes instead of "0 KB" for banks smaller than 1024 bytes
   - `Application.h` Watchpoints section header comment added for consistency with surrounding groups
+  - **ISP split of `IBusDevice`** — `drawPanel()` and the former `hasPanel()` bool removed from `IBusDevice`; extracted to a new `IHasPanel` pure interface (`src/emulator/core/IHasPanel.h`). Devices that expose a debug panel now inherit both `IBusDevice` and `IHasPanel` (CIA6526, SID6581, VIC6566, ULA, AppleIIVideo, AppleIIIO). `Machine::panelDevices()` uses `dynamic_cast<IHasPanel*>` to discover panel-capable devices; `PanelEntry` carries both `IBusDevice*` and `IHasPanel*` so call sites need no casts. New device authors only implement `IBusDevice` unless they also want a panel — no ImGui knowledge required otherwise
 
 ---
 

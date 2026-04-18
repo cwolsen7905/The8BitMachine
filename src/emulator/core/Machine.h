@@ -1,6 +1,7 @@
 #pragma once
 
 #include "emulator/core/Bus.h"
+#include "emulator/core/IHasPanel.h"
 #include "emulator/core/ICPU.h"
 #include "emulator/devices/CIA6526.h"
 #include "emulator/devices/BankedMemory.h"
@@ -184,7 +185,11 @@ public:
     // All devices that have debug panels, regardless of bus layout.
     // Always includes the fixed chips (VIC, SID, CIA1/2) even when they are
     // not direct bus entries (e.g. inside C64IOSpace in preset mode).
-    struct PanelEntry { std::string label; IBusDevice* device; };
+    struct PanelEntry {
+        std::string  label;
+        IBusDevice*  device;  // for identification, map keys, statusLine, deviceName
+        IHasPanel*   panel;   // for drawPanel — same object as device, different interface
+    };
     std::vector<PanelEntry> panelDevices();
 
     // Look up a device pointer by its config ID ("vic", "sid", "cia1", etc.)

@@ -607,11 +607,12 @@ std::vector<Machine::PanelEntry> Machine::panelDevices() {
     // same chip mapped at two addresses produces two independently-labelled
     // entries (both open the same panel, but the menu is self-describing).
     for (const auto& e : bus_.devices()) {
-        if (e.device && e.device->hasPanel()) {
+        auto* panel = dynamic_cast<IHasPanel*>(e.device);
+        if (panel) {
             char buf[64];
             std::snprintf(buf, sizeof(buf), "%s $%04X-$%04X",
                           e.device->deviceName(), e.start, e.end);
-            result.push_back({ buf, e.device });
+            result.push_back({ buf, e.device, panel });
             onBus.insert(e.device);
         }
     }
@@ -649,8 +650,9 @@ std::vector<Machine::PanelEntry> Machine::panelDevices() {
     };
 
     for (IBusDevice* dev : activeFixedDevices_) {
-        if (dev->hasPanel() && !onBus.count(dev))
-            result.push_back({ findAddr(dev), dev });
+        auto* panel = dynamic_cast<IHasPanel*>(dev);
+        if (panel && !onBus.count(dev))
+            result.push_back({ findAddr(dev), dev, panel });
     }
 
     return result;

@@ -347,7 +347,7 @@ void Application::render() {
         auto it = devicePanelVisible_.find(entry.device);
         if (it == devicePanelVisible_.end() || !it->second) continue;
         bool open = true;
-        entry.device->drawPanel(entry.label.c_str(), &open);
+        entry.panel->drawPanel(entry.label.c_str(), &open);
         // Keyboard matrix injected as a collapsible section in the owning device panel.
         if (entry.device == &machine_.cia1())
             injectC64KeyMatrix(entry.label.c_str(), &open);
