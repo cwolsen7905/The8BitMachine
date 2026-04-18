@@ -342,6 +342,7 @@ void CIA6526::drawPanel(const char* title, bool* open) {
         bitLabel("START",   cra_ & CRA_START);
         bitLabel("ONESHOT", cra_ & CRA_ONESHOT);
         ImGui::NewLine();
+        if (ImGui::SmallButton("Fire Now##ta")) timerAUnderflow();
     }
 
     if (ImGui::CollapsingHeader("Timer B", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -353,6 +354,7 @@ void CIA6526::drawPanel(const char* title, bool* open) {
         bitLabel("ONESHOT", crb_ & CRB_ONESHOT);
         bitLabel((crb_ & CRB_INMODE) ? "cnt:TA" : "cnt:ϕ2", true);
         ImGui::NewLine();
+        if (ImGui::SmallButton("Fire Now##tb")) timerBUnderflow();
     }
 
     if (ImGui::CollapsingHeader("ICR", ImGuiTreeNodeFlags_DefaultOpen)) {
