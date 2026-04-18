@@ -9,6 +9,10 @@ Releases are tagged on the `main` branch; active development happens on `dev`.
 
 ## [Unreleased]
 
+---
+
+## [0.31.0] - 2026-04-18
+
 ### Added
 - **AppleIIIO soft-switch toggles** — Soft Switches section of the Apple IIe I/O panel replaced with interactive controls: TEXT/GRAPHICS radio buttons, LO-RES/HI-RES radio buttons (disabled in text mode), PAGE 1/PAGE 2 radio buttons, and a MIXED checkbox; each toggle calls `applySoftSwitch()` so the `AppleIIVideo` callbacks fire immediately and the screen updates in real time
 

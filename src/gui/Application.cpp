@@ -1,15 +1,9 @@
 #include "Application.h"
 #include "emulator/core/ICPU.h"
-#include "emulator/devices/CIA6526.h"
 #include "emulator/devices/SID6581.h"
 #include "emulator/devices/VIC6566.h"
-#include "emulator/cpu/Disassembler.h"
 #include "gui/FileDialog.h"
 
-#include <nlohmann/json.hpp>
-
-#include <algorithm>
-#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -24,10 +18,10 @@
 #  include <SDL_opengl.h>
 #endif
 
-#include <algorithm>
 #include <cstdio>
 #include <cstring>
-#include <unordered_set>
+
+static constexpr const char* kAppVersion = "v0.31.0";
 
 // ---------------------------------------------------------------------------
 // Construction / destruction
@@ -485,7 +479,7 @@ void Application::drawMenuBar() {
     if (ImGui::BeginMenu("Help")) {
         if (ImGui::MenuItem("About")) {
             termPrint("---");
-            termPrint("The 8-Bit Machine  v0.30.0");
+            termPrint(std::string("The 8-Bit Machine  ") + kAppVersion);
             termPrint("Design your own 8-bit computer.");
             termPrint("Pick a CPU, add devices, wire the address space.");
             termPrint("Author: Christopher W. Olsen <cwolsen@brainchurts.com>");
@@ -689,7 +683,7 @@ void Application::emulatorReset() {
     emulatorRunning_ = false;
 
     termLines_.clear();
-    termPrint("The 8-Bit Machine  |  Machine Designer  v0.8");
+    termPrint(std::string("The 8-Bit Machine  ") + kAppVersion + "  |  Machine Designer");
     termPrint("=============================================");
     termPrint("Design your own 8-bit computer.");
     termPrint("Pick a CPU, add devices, wire the address space.");

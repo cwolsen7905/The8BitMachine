@@ -14,10 +14,10 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ---
 
-## Current State  (v0.30.0)
+## Current State  (v0.31.0)
 
 ### Machine Designer
-- **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and an optional `statusLine()` for the designer panel
+- **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and `statusLine()` for the designer panel. Devices that expose an ImGui debug panel also implement the separate **`IHasPanel`** interface (`drawPanel()`), keeping UI knowledge out of the core device contract
 - **`ICPU` interface** — any CPU implements `reset()`, `clock()`, `irq()`, `nmi()`, `complete()`, `stateString()`
 - **Dynamic address-space map** — devices are registered with `bus.addDevice(start, end, device)` in priority order; unmatched reads return `$FF` (open bus)
 - **Machine class** — owns device instances, builds the default address map, exposes typed accessors for the UI
@@ -61,7 +61,7 @@ Zilog Z80:
 - **Breakpoints panel** (Debug menu) — sorted list of all active breakpoints; click to navigate the Disassembler; `x` to delete individually; Clear All; hex input to add a breakpoint by address
 - **Watchpoints** (Debug menu) — break on memory read, write, or both at a specific address; per-entry R/W toggles; terminal prints address and direction when triggered
 - **Memory Viewer panel** (Debug menu) — full hex editor (imgui_memory_editor); click any byte to edit in-place, Follow PC toggle, PC highlighted in yellow, built-in data preview and column options; ROM regions shown in amber, I/O devices in blue, legend bar shows color key; ROM edit toggle allows patching ROM data in-place for debugging
-- **Per-device panels** (View menu) — each chip with `hasPanel()` gets its own dockable window; CIA shows timers/ICR/TOD/ports, VIC shows raster/colours/control, SID shows voices/filter/volume; panels are listed dynamically based on what is mounted; keyboard-owning devices (CIA1, ULA) include a collapsible **Keyboard Matrix** section with a clickable grid for injecting key presses
+- **Per-device panels** (View menu) — each chip that implements `IHasPanel` gets its own dockable window; CIA shows timers/ICR/TOD/ports, VIC shows raster/colours/control, SID shows voices/filter/volume; panels are listed dynamically based on what is mounted; keyboard-owning devices (CIA1, ULA) include a collapsible **Keyboard Matrix** section with a clickable grid for injecting key presses
 - **Machine Designer panel** (View menu) — interactive address map: click Start/End addresses to edit inline (invalid values stay red, Tab commits like Enter, clicking away persists red so you can re-enter), drag `=` handle to reorder priority, Sort by Address, Reset to Defaults; validation highlights unreachable entries (orange) and invalid ranges (red), warns when no catch-all entry is present; **Contained Devices** section lists chips embedded inside container devices (VIC/SID/CIA inside C64IOSpace) with live computed addresses
 - **File → New Machine** — resets to a blank default map (MOS 8502, VIC+SID+CIA1+CIA2, 64 KB RAM); clears any active preset and stops the emulator
 - **ROM loading** (File → Load ROM) — native macOS file dialog; supports raw `.bin` and Commodore `.prg`; resets CPU and jumps disassembler to load address
