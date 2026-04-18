@@ -1394,7 +1394,9 @@ void Application::drawKeyboardDebug() {
         ImGui::TextDisabled("Row%d ", row);
         for (int col = 0; col < 8; ++col) {
             ImGui::SameLine();
-            const bool held = machine_.cia1().keyState(col, row);
+            int kCol = col, kRow = row;
+            if (keyMatrixTranspose_) std::swap(kCol, kRow);
+            const bool held = machine_.cia1().keyState(kCol, kRow);
             const bool isLast = (lastKeyCol_ == col && lastKeyRow_ == row);
 
             ImVec4 bg  = held    ? ImVec4(0.1f, 0.7f, 0.2f, 0.6f)

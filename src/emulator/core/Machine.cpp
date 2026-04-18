@@ -102,11 +102,22 @@ MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
     cpu6510_.reset();   // fires onIOWrite with power-on state ($37/$2F → BASIC+IO+KERNAL)
 
     activeFixedDevices_ = { &vic_, &sid_, &cia1_, &cia2_ };
+    installCIA1KeyHandler(keyMatrixTranspose);
 
-    // Wire keyboard: SDL keycodes → CIA1 matrix (col=PA bit, row=PB bit).
-    // keyMatrixTranspose swaps col/row for MEGA65 OpenROMs (PA=rows, PB=cols).
+    // Record preset so saveConfig can serialise it instead of the device list.
+    hasPreset_ = true;
+    preset_    = { "c64", kernalPath, basicPath, charPath, keyMatrixTranspose };
+
+    return { true, "[C64] Machine ready — press F8 to reset, F5 to run" };
+}
+
+// ---------------------------------------------------------------------------
+// Keyboard handler installers
+// ---------------------------------------------------------------------------
+
+void Machine::installCIA1KeyHandler(bool transpose) {
     clearKeysHandler_ = [this]() { cia1_.clearAllKeys(); };
-    keyHandler_ = [this, keyMatrixTranspose](int sym, bool pressed) {
+    keyHandler_ = [this, transpose](int sym, bool pressed) {
         int col = -1, row = -1;
         switch (sym) {
             case SDLK_DELETE:
@@ -173,20 +184,71 @@ MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
         }
         if (col >= 0) {
             int ciaCol = col, ciaRow = row;
-            if (keyMatrixTranspose) std::swap(ciaCol, ciaRow);
+            if (transpose) std::swap(ciaCol, ciaRow);
             cia1_.setKey(ciaCol, ciaRow, pressed);
         }
     };
+}
 
-    // Record preset so saveConfig can serialise it instead of the device list.
-    hasPreset_ = true;
-    preset_    = { "c64", kernalPath, basicPath, charPath, keyMatrixTranspose };
-
-    return { true, "[C64] Machine ready — press F8 to reset, F5 to run" };
+void Machine::installULAKeyHandler() {
+    clearKeysHandler_ = [this]() { ula_.clearAllKeys(); };
+    keyHandler_ = [this](int sym, bool pressed) {
+        int row = -1, bit = -1;
+        switch (sym) {
+            case SDLK_b:                       row=0; bit=0; break;
+            case SDLK_n:                       row=0; bit=1; break;
+            case SDLK_m:                       row=0; bit=2; break;
+            case SDLK_LCTRL: case SDLK_RCTRL: row=0; bit=3; break;
+            case SDLK_SPACE:                   row=0; bit=4; break;
+            case SDLK_h:                       row=1; bit=0; break;
+            case SDLK_j:                       row=1; bit=1; break;
+            case SDLK_k:                       row=1; bit=2; break;
+            case SDLK_l:                       row=1; bit=3; break;
+            case SDLK_RETURN:                  row=1; bit=4; break;
+            case SDLK_y:                       row=2; bit=0; break;
+            case SDLK_u:                       row=2; bit=1; break;
+            case SDLK_i:                       row=2; bit=2; break;
+            case SDLK_o:                       row=2; bit=3; break;
+            case SDLK_p:                       row=2; bit=4; break;
+            case SDLK_6:                       row=3; bit=0; break;
+            case SDLK_7:                       row=3; bit=1; break;
+            case SDLK_8:                       row=3; bit=2; break;
+            case SDLK_9:                       row=3; bit=3; break;
+            case SDLK_0:                       row=3; bit=4; break;
+            case SDLK_5:                       row=4; bit=0; break;
+            case SDLK_4:                       row=4; bit=1; break;
+            case SDLK_3:                       row=4; bit=2; break;
+            case SDLK_2:                       row=4; bit=3; break;
+            case SDLK_1:                       row=4; bit=4; break;
+            case SDLK_t:                       row=5; bit=0; break;
+            case SDLK_r:                       row=5; bit=1; break;
+            case SDLK_e:                       row=5; bit=2; break;
+            case SDLK_w:                       row=5; bit=3; break;
+            case SDLK_q:                       row=5; bit=4; break;
+            case SDLK_g:                       row=6; bit=0; break;
+            case SDLK_f:                       row=6; bit=1; break;
+            case SDLK_d:                       row=6; bit=2; break;
+            case SDLK_s:                       row=6; bit=3; break;
+            case SDLK_a:                       row=6; bit=4; break;
+            case SDLK_v:                       row=7; bit=0; break;
+            case SDLK_c:                       row=7; bit=1; break;
+            case SDLK_x:                       row=7; bit=2; break;
+            case SDLK_z:                       row=7; bit=3; break;
+            case SDLK_LSHIFT: case SDLK_RSHIFT: row=7; bit=4; break;
+            case SDLK_LEFT:      ula_.setKey(7,4,pressed); row=3; bit=4; break;
+            case SDLK_RIGHT:     ula_.setKey(7,4,pressed); row=3; bit=2; break;
+            case SDLK_DOWN:      ula_.setKey(7,4,pressed); row=3; bit=1; break;
+            case SDLK_UP:        ula_.setKey(7,4,pressed); row=3; bit=0; break;
+            case SDLK_BACKSPACE: ula_.setKey(7,4,pressed); row=3; bit=4; break;
+            default: break;
+        }
+        if (row >= 0) ula_.setKey(row, bit, pressed);
+    };
 }
 
 void Machine::buildDefaultMap() {
     activeFixedDevices_ = { &vic_, &sid_, &cia1_, &cia2_ };
+    installCIA1KeyHandler(false);  // default machine uses CIA1 with standard (no-transpose) mapping
     // Bus iterates entries in registration order — higher-priority devices
     // must be registered first so they shadow the catch-all RAM entry.
     bus_.addDevice(0xD000, 0xD3FF, &vic_,  "VIC-IIe $D000–$D3FF");
@@ -331,62 +393,7 @@ MachineConfigResult Machine::buildSpectrumPreset(const std::string& romPath) {
     activeCpu_->reset();
 
     activeFixedDevices_ = { &ula_ };
-
-    // Wire keyboard: SDL keycodes → ULA 8×5 matrix (active-low, 0=pressed).
-    clearKeysHandler_ = [this]() { ula_.clearAllKeys(); };
-    keyHandler_ = [this](int sym, bool pressed) {
-        int row = -1, bit = -1;
-        switch (sym) {
-            case SDLK_b:                    row=0; bit=0; break;
-            case SDLK_n:                    row=0; bit=1; break;
-            case SDLK_m:                    row=0; bit=2; break;
-            case SDLK_LCTRL: case SDLK_RCTRL: row=0; bit=3; break;  // Sym Shift
-            case SDLK_SPACE:                row=0; bit=4; break;
-            case SDLK_h:                    row=1; bit=0; break;
-            case SDLK_j:                    row=1; bit=1; break;
-            case SDLK_k:                    row=1; bit=2; break;
-            case SDLK_l:                    row=1; bit=3; break;
-            case SDLK_RETURN:               row=1; bit=4; break;
-            case SDLK_y:                    row=2; bit=0; break;
-            case SDLK_u:                    row=2; bit=1; break;
-            case SDLK_i:                    row=2; bit=2; break;
-            case SDLK_o:                    row=2; bit=3; break;
-            case SDLK_p:                    row=2; bit=4; break;
-            case SDLK_6:                    row=3; bit=0; break;
-            case SDLK_7:                    row=3; bit=1; break;
-            case SDLK_8:                    row=3; bit=2; break;
-            case SDLK_9:                    row=3; bit=3; break;
-            case SDLK_0:                    row=3; bit=4; break;
-            case SDLK_5:                    row=4; bit=0; break;
-            case SDLK_4:                    row=4; bit=1; break;
-            case SDLK_3:                    row=4; bit=2; break;
-            case SDLK_2:                    row=4; bit=3; break;
-            case SDLK_1:                    row=4; bit=4; break;
-            case SDLK_t:                    row=5; bit=0; break;
-            case SDLK_r:                    row=5; bit=1; break;
-            case SDLK_e:                    row=5; bit=2; break;
-            case SDLK_w:                    row=5; bit=3; break;
-            case SDLK_q:                    row=5; bit=4; break;
-            case SDLK_g:                    row=6; bit=0; break;
-            case SDLK_f:                    row=6; bit=1; break;
-            case SDLK_d:                    row=6; bit=2; break;
-            case SDLK_s:                    row=6; bit=3; break;
-            case SDLK_a:                    row=6; bit=4; break;
-            case SDLK_v:                    row=7; bit=0; break;
-            case SDLK_c:                    row=7; bit=1; break;
-            case SDLK_x:                    row=7; bit=2; break;
-            case SDLK_z:                    row=7; bit=3; break;
-            case SDLK_LSHIFT: case SDLK_RSHIFT: row=7; bit=4; break;  // Caps Shift
-            // Cursor keys → Caps Shift + digit combos
-            case SDLK_LEFT:   ula_.setKey(7,4,pressed); row=3; bit=4; break;
-            case SDLK_RIGHT:  ula_.setKey(7,4,pressed); row=3; bit=2; break;
-            case SDLK_DOWN:   ula_.setKey(7,4,pressed); row=3; bit=1; break;
-            case SDLK_UP:     ula_.setKey(7,4,pressed); row=3; bit=0; break;
-            case SDLK_BACKSPACE: ula_.setKey(7,4,pressed); row=3; bit=4; break;
-            default: break;
-        }
-        if (row >= 0) ula_.setKey(row, bit, pressed);
-    };
+    installULAKeyHandler();
 
     // Point the active screen at the ULA framebuffer
     activeScreen_ = { ULA::WIDTH, ULA::HEIGHT, ula_.framebuffer() };

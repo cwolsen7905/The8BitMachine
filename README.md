@@ -10,7 +10,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ---
 
-## Current State  (v0.28)
+## Current State  (v0.28.1)
 
 ### Machine Designer
 - **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and an optional `statusLine()` for the designer panel

@@ -203,6 +203,8 @@ private:
     ScreenInfo activeScreen_;
 
     void buildDefaultMap();
+    void installCIA1KeyHandler(bool transpose);
+    void installULAKeyHandler();
 
     std::vector<std::unique_ptr<IBusDevice>> dynamicDevices_;
 

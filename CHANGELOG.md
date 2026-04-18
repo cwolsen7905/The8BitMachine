@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.28.1] - 2026-04-17
+
+### Fixed
+- **Keyboard not working on custom/default machines** — `buildDefaultMap()` now calls `installCIA1KeyHandler(false)` so any machine built without a preset has a working CIA1 keyboard; previously `keyHandler_` was null and all key events were silently dropped
+- **Keyboard Matrix debug panel showing no held keys** — `keyState(col, row)` reads were not accounting for `keyMatrixTranspose`; panel now swaps col/row when transpose is active, matching how the handler stores keys in CIA1
+- **Extracted key handler installers** — CIA1 and ULA key mapping switch tables moved into `Machine::installCIA1KeyHandler(transpose)` and `Machine::installULAKeyHandler()` to eliminate duplication between preset builders
+
+---
+
 ## [0.28.0] - 2026-04-17
 
 ### Added
