@@ -36,17 +36,19 @@
 Application::Application() {
     std::memset(termInput_, 0, sizeof(termInput_));
 
-    memEditor_.UserData = &machine_;
+    memEditor_.UserData = this;
 
     memEditor_.ReadFn = [](const ImU8* /*mem*/, size_t off, void* ud) -> ImU8 {
-        return static_cast<Machine*>(ud)->bus().read(static_cast<uint16_t>(off));
+        return static_cast<Application*>(ud)->machine_.bus().read(static_cast<uint16_t>(off));
     };
     memEditor_.WriteFn = [](ImU8* /*mem*/, size_t off, ImU8 d, void* ud) {
-        static_cast<Machine*>(ud)->bus().write(static_cast<uint16_t>(off), d);
+        static_cast<Application*>(ud)->machine_.bus().write(static_cast<uint16_t>(off), d);
     };
     memEditor_.BgColorFn = [](const ImU8* /*mem*/, size_t off, void* ud) -> ImU32 {
-        const uint16_t pc = static_cast<Machine*>(ud)->cpu().getPC();
-        return (static_cast<uint16_t>(off) == pc) ? IM_COL32(255, 255, 50, 80) : 0;
+        auto* app = static_cast<Application*>(ud);
+        const uint16_t addr = static_cast<uint16_t>(off);
+        if (addr == app->machine_.cpu().getPC()) return IM_COL32(255, 255, 50, 80);
+        return app->memRegionColors_[addr];
     };
 
     machine_.bus().onAccess = [this](uint16_t addr, bool isWrite) {
@@ -370,6 +372,8 @@ void Application::drawMenuBar() {
             machine_.reset();
             screenTexW_ = 0; screenTexH_ = 0;
             setDisasmLabels("");
+            allowRomEdit_    = false;
+            memColorsDirty_  = true;
         }
 
         ImGui::Separator();
@@ -1852,6 +1856,8 @@ void Application::buildActivePreset() {
         cycleCount_      = 0;
         emulatorRunning_ = false;
         setDisasmLabels(preset.presetType);
+        allowRomEdit_   = false;
+        memColorsDirty_ = true;
         termPrint(result.message);
         termPrint(machine_.cpu().stateString());
         showPresetDialog_ = false;
@@ -1902,6 +1908,33 @@ void Application::setDisasmLabels(const std::string& presetType) {
     }
 }
 
+void Application::rebuildMemRegionColors() {
+    std::memset(memRegionColors_, 0, sizeof(memRegionColors_));
+
+    // Fill in reverse priority order so highest-priority device wins
+    const auto& devs = machine_.bus().devices();
+    for (int i = static_cast<int>(devs.size()) - 1; i >= 0; --i) {
+        const auto& entry = devs[i];
+        const char* name  = entry.device ? entry.device->deviceName() : nullptr;
+
+        ImU32 color = 0;
+        if (!name) {
+            color = IM_COL32(0, 30, 100, 90);  // CHAR_OUT sentinel → I/O blue
+        } else if (std::strcmp(name, "ROM") == 0) {
+            color = IM_COL32(100, 40, 0, 90);  // ROM → amber
+        } else if (std::strcmp(name, "RAM") == 0 || std::strcmp(name, "Memory") == 0) {
+            color = 0;                          // RAM → no tint
+        } else {
+            color = IM_COL32(0, 30, 100, 90);  // everything else → I/O blue
+        }
+
+        for (uint32_t a = entry.start; a <= entry.end; ++a)
+            memRegionColors_[a] = color;
+    }
+
+    memColorsDirty_ = false;
+}
+
 void Application::termPrint(const std::string& line) {
     termLines_.push_back(line);
     termScrollToBottom_ = true;
@@ -1945,17 +1978,43 @@ void Application::emulatorReset() {
 
 
 void Application::drawMemoryViewer() {
-    const uint16_t pc = machine_.cpu().getPC();
+    if (memColorsDirty_) rebuildMemRegionColors();
 
+    const uint16_t pc = machine_.cpu().getPC();
     if (memViewFollowPC_)
         memEditor_.GotoAddrAndHighlight(pc, pc);
 
-    // Prepend a "Follow PC" toggle above the editor's own toolbar
     ImGui::SetNextWindowSize({ 680.0f, 500.0f }, ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Memory Viewer", &showMemView_)) {
         ImGui::Checkbox("Follow PC", &memViewFollowPC_);
         ImGui::SameLine(0.0f, 16.0f);
         ImGui::TextDisabled("PC=$%04X", (unsigned)pc);
+        ImGui::SameLine(0.0f, 20.0f);
+
+        // ROM edit toggle
+        if (allowRomEdit_)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.25f, 0.0f, 1.0f));
+        if (ImGui::SmallButton(allowRomEdit_ ? "ROM: Editable" : "ROM: Read-Only")) {
+            allowRomEdit_ = !allowRomEdit_;
+            machine_.setRomsWritable(allowRomEdit_);
+        }
+        if (allowRomEdit_) ImGui::PopStyleColor();
+
+        ImGui::SameLine(0.0f, 20.0f);
+
+        // Colour legend
+        ImGui::ColorButton("##rom_legend",  {0.39f, 0.16f, 0.0f, 0.9f},
+            ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoPicker, {10,10});
+        ImGui::SameLine(0.0f, 3.0f); ImGui::TextDisabled("ROM");
+        ImGui::SameLine(0.0f, 10.0f);
+        ImGui::ColorButton("##io_legend",   {0.0f, 0.12f, 0.39f, 0.9f},
+            ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoPicker, {10,10});
+        ImGui::SameLine(0.0f, 3.0f); ImGui::TextDisabled("I/O");
+        ImGui::SameLine(0.0f, 10.0f);
+        ImGui::ColorButton("##pc_legend",   {1.0f, 1.0f, 0.2f, 0.9f},
+            ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoPicker, {10,10});
+        ImGui::SameLine(0.0f, 3.0f); ImGui::TextDisabled("PC");
+
         ImGui::Separator();
         memEditor_.DrawContents(nullptr, 0x10000);
     }

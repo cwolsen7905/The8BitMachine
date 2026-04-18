@@ -106,7 +106,10 @@ private:
     bool showTerminal_ = true;
     bool showCpuState_ = true;
     bool showDisasm_   = true;
-    bool showMemView_  = false;
+    bool showMemView_   = false;
+    bool allowRomEdit_  = false;
+    bool memColorsDirty_ = true;
+    ImU32 memRegionColors_[0x10000] = {};
     bool showDesigner_ = false;
 
     // -----------------------------------------------------------------------
@@ -200,6 +203,7 @@ private:
     void drawDisassembler();
     void drawBreakpoints();
     void drawWatchpoints();
+    void rebuildMemRegionColors();
     void setDisasmLabels(const std::string& presetType);
     void drawMemoryViewer();
     void drawMachineDesigner();

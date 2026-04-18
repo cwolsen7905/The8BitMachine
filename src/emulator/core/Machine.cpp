@@ -339,6 +339,13 @@ void Machine::buildDefaultMap() {
     bus_.addDevice(0x0000, 0xFFFF, &ram_,  "RAM  $0000–$FFFF");
 }
 
+void Machine::setRomsWritable(bool writable) {
+    for (auto& dev : dynamicDevices_) {
+        if (ROM* rom = dynamic_cast<ROM*>(dev.get()))
+            rom->setWritable(writable);
+    }
+}
+
 void Machine::resetAddressMap() {
     bus_.clearDevices();
     dynamicDevices_.clear();

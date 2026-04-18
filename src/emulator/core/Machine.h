@@ -119,6 +119,7 @@ public:
     MachineConfigResult loadConfig(const std::string& path);
 
     void resetAddressMap();   // restore default device wiring
+    void setRomsWritable(bool writable);
 
     // Build a Commodore 64 memory map.  Loads kernal, BASIC, and char ROMs
     // from the given paths.  Switches the CPU to MOS 6510 and wires the I/O

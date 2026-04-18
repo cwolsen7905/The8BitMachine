@@ -25,15 +25,19 @@ public:
     const std::string& filePath() const { return filePath_; }
     size_t             dataSize() const { return data_.size(); }
 
+    void setWritable(bool w) { writable_ = w; }
+    bool isWritable()  const { return writable_; }
+
     // IBusDevice
     const char* deviceName() const override { return "ROM"; }
     void        reset()      override {}
     uint8_t     read (uint16_t offset)          const override;
-    void        write(uint16_t, uint8_t)              override {}
+    void        write(uint16_t offset, uint8_t value) override;
     std::string statusLine()                    const override;
 
 private:
     std::string          label_;
     std::string          filePath_;
     std::vector<uint8_t> data_;
+    bool                 writable_ = false;
 };

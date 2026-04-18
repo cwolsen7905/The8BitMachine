@@ -30,6 +30,11 @@ bool ROM::loadFromFile(const std::string& path, size_t skipBytes) {
     return true;
 }
 
+void ROM::write(uint16_t offset, uint8_t value) {
+    if (writable_ && offset < static_cast<uint16_t>(data_.size()))
+        data_[offset] = value;
+}
+
 uint8_t ROM::read(uint16_t offset) const {
     if (offset < static_cast<uint16_t>(data_.size()))
         return data_[offset];
