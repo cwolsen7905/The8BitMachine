@@ -729,6 +729,7 @@ void Application::drawMachineDesigner() {
         { "sid",          "SID (MOS 6581)",             "D400", "D7FF" },
         { "cia1",         "CIA1 (MOS 6526)",            "F100", "F1FF" },
         { "cia2",         "CIA2 (MOS 6526)",            "F200", "F2FF" },
+        { "ula",          "ULA (ZX Spectrum)",          "0000", "3FFF" },
         { "c64_io_space", "C64 I/O Space (VIC+SID+CIA)","D000", "DFFF" },
         { "ram",          "RAM (64 KB flat)",           "0000", "FFFF" },
         { "char_out",     "CHAR_OUT debug port",        "F000", "F000" },
