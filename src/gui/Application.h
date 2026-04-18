@@ -68,6 +68,8 @@ private:
     // Breakpoints
     // -----------------------------------------------------------------------
     std::unordered_set<uint16_t> breakpoints_;
+    bool showBreakpoints_ = false;
+    char bpAddInput_[5]   = "";
 
     // -----------------------------------------------------------------------
     // Per-device panel visibility  (keyed by IBusDevice*)
@@ -181,6 +183,7 @@ private:
     void drawTerminal();
     void drawCpuState();
     void drawDisassembler();
+    void drawBreakpoints();
     void drawMemoryViewer();
     void drawMachineDesigner();
 

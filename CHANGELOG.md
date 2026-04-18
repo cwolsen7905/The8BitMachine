@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.31.0] - 2026-04-17
+
+### Added
+- **Breakpoints panel** (Debug menu) — dockable panel listing all active breakpoints sorted by address; click any entry to navigate the Disassembler to that address; `x` button removes individual breakpoints; "Clear All" removes all at once; hex input field + Add button (or Enter) sets a breakpoint by address without scrolling the Disassembler
+
+---
+
 ## [0.30.0] - 2026-04-17
 
 ### Added

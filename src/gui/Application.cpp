@@ -307,8 +307,9 @@ void Application::render() {
     if (showScreen_)   drawScreen();
     if (showTerminal_) drawTerminal();
     if (showCpuState_) drawCpuState();
-    if (showDisasm_)   drawDisassembler();
-    if (showMemView_)  drawMemoryViewer();
+    if (showDisasm_)       drawDisassembler();
+    if (showBreakpoints_)  drawBreakpoints();
+    if (showMemView_)      drawMemoryViewer();
     if (showDesigner_) drawMachineDesigner();
     if (showPresetDialog_) drawPresetDialog();
 
@@ -442,6 +443,7 @@ void Application::drawMenuBar() {
     // Debug ---------------------------------------------------------------
     if (ImGui::BeginMenu("Debug")) {
         ImGui::MenuItem("Disassembler",    nullptr, &showDisasm_);
+        ImGui::MenuItem("Breakpoints",     nullptr, &showBreakpoints_);
         ImGui::MenuItem("Memory Viewer",   nullptr, &showMemView_);
         ImGui::EndMenu();
     }
@@ -622,6 +624,64 @@ void Application::drawCpuState() {
     ImGui::Separator();
     ImGui::Text("Cycles  %llu", (unsigned long long)cycleCount_);
 
+
+    ImGui::End();
+}
+
+// ---------------------------------------------------------------------------
+// Breakpoints panel
+// ---------------------------------------------------------------------------
+
+void Application::drawBreakpoints() {
+    ImGui::SetNextWindowSize({ 260.0f, 300.0f }, ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Breakpoints", &showBreakpoints_)) {
+        ImGui::End();
+        return;
+    }
+
+    // Collect and sort so the list is stable
+    std::vector<uint16_t> sorted(breakpoints_.begin(), breakpoints_.end());
+    std::sort(sorted.begin(), sorted.end());
+
+    if (ImGui::Button("Clear All") && !breakpoints_.empty())
+        breakpoints_.clear();
+
+    ImGui::Separator();
+
+    // List
+    ImGui::BeginChild("##bplist", ImVec2(0, -ImGui::GetFrameHeightWithSpacing() - 8.0f));
+    if (sorted.empty()) {
+        ImGui::TextDisabled("No breakpoints set.");
+        ImGui::TextDisabled("Click an address in the");
+        ImGui::TextDisabled("Disassembler to add one.");
+    }
+    for (uint16_t addr : sorted) {
+        ImGui::PushID(addr);
+        char label[8];
+        std::snprintf(label, sizeof(label), "$%04X", addr);
+        if (ImGui::Selectable(label, false, 0, ImVec2(ImGui::GetContentRegionAvail().x - 28.0f, 0))) {
+            disasmViewAddr_ = addr;
+            disasmFollowPC_ = false;
+            showDisasm_     = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("x"))
+            breakpoints_.erase(addr);
+        ImGui::PopID();
+    }
+    ImGui::EndChild();
+
+    ImGui::Separator();
+
+    // Add row
+    ImGui::SetNextItemWidth(60.0f);
+    const bool enter = ImGui::InputText("##bpadd", bpAddInput_, sizeof(bpAddInput_),
+        ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::SameLine();
+    if ((ImGui::Button("Add") || enter) && bpAddInput_[0] != '\0') {
+        breakpoints_.insert(static_cast<uint16_t>(std::stoul(bpAddInput_, nullptr, 16)));
+        bpAddInput_[0] = '\0';
+    }
 
     ImGui::End();
 }
