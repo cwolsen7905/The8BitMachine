@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.29.0] - 2026-04-17
+
+### Added
+- **Application icon** — `assets/icon.png` loaded at startup via SDL2_image and set as the window icon; `assets/` directory copied next to the executable on each build
+- **Keyboard matrix in device panels** — CIA6526 and ULA panels now each contain a collapsible "Keyboard Matrix" section; C64 8×8 clickable grid (with MEGA65/Standard transpose toggle) lives under the CIA1 panel, Spectrum 8×5 clickable grid under the ULA panel; standalone "Keyboard Matrix" debug window removed from the View menu
+- **`ULA::keyState(row, bit)`** — non-destructive read of the ULA key matrix; used by the Spectrum keyboard matrix panel
+
+### Fixed
+- **ZX Spectrum frame IRQ looping** — `irqLine_` was never cleared after being taken, causing the Z80 to re-enter the ISR immediately after `EI`; line is now cleared on acknowledge (ULA holds /INT for 32 T-states; the ISR runs well within that window)
+- **ZX Spectrum keyboard matrix wrong** — row and bit assignments were fully inverted vs real hardware; corrected to standard layout: row 0 (0xFEFE) = CS/Z/X/C/V through row 7 (0x7FFE) = SP/SS/M/N/B; arrow keys now map to Caps+5/6/7/8, Backspace to Caps+0, Alt to Symbol Shift
+- **"ROM target" option shown for Spectrum preset** — the MEGA65/Standard keyboard transpose radio buttons appeared in the Spectrum preset dialog because the condition checked `!preset.roms.empty()`; now only shown when `preset.keyMatrixTranspose` is true (C64 only)
+- **ULA key matrix comment wrong** — documented row/bit layout now matches real hardware
+
+---
+
 ## [0.28.1] - 2026-04-17
 
 ### Fixed

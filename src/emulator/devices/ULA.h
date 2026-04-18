@@ -65,6 +65,7 @@ public:
     // See Matrix layout in ULA.cpp
     // -----------------------------------------------------------------------
     void setKey(int row, int bit, bool pressed);
+    bool keyState(int row, int bit) const;
     void clearAllKeys();
 
     // -----------------------------------------------------------------------

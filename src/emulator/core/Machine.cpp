@@ -195,51 +195,60 @@ void Machine::installULAKeyHandler() {
     keyHandler_ = [this](int sym, bool pressed) {
         int row = -1, bit = -1;
         switch (sym) {
-            case SDLK_b:                       row=0; bit=0; break;
-            case SDLK_n:                       row=0; bit=1; break;
-            case SDLK_m:                       row=0; bit=2; break;
-            case SDLK_LCTRL: case SDLK_RCTRL: row=0; bit=3; break;
-            case SDLK_SPACE:                   row=0; bit=4; break;
-            case SDLK_h:                       row=1; bit=0; break;
-            case SDLK_j:                       row=1; bit=1; break;
-            case SDLK_k:                       row=1; bit=2; break;
-            case SDLK_l:                       row=1; bit=3; break;
-            case SDLK_RETURN:                  row=1; bit=4; break;
-            case SDLK_y:                       row=2; bit=0; break;
-            case SDLK_u:                       row=2; bit=1; break;
-            case SDLK_i:                       row=2; bit=2; break;
-            case SDLK_o:                       row=2; bit=3; break;
-            case SDLK_p:                       row=2; bit=4; break;
-            case SDLK_6:                       row=3; bit=0; break;
-            case SDLK_7:                       row=3; bit=1; break;
-            case SDLK_8:                       row=3; bit=2; break;
-            case SDLK_9:                       row=3; bit=3; break;
-            case SDLK_0:                       row=3; bit=4; break;
-            case SDLK_5:                       row=4; bit=0; break;
-            case SDLK_4:                       row=4; bit=1; break;
-            case SDLK_3:                       row=4; bit=2; break;
-            case SDLK_2:                       row=4; bit=3; break;
-            case SDLK_1:                       row=4; bit=4; break;
-            case SDLK_t:                       row=5; bit=0; break;
-            case SDLK_r:                       row=5; bit=1; break;
-            case SDLK_e:                       row=5; bit=2; break;
-            case SDLK_w:                       row=5; bit=3; break;
-            case SDLK_q:                       row=5; bit=4; break;
-            case SDLK_g:                       row=6; bit=0; break;
-            case SDLK_f:                       row=6; bit=1; break;
-            case SDLK_d:                       row=6; bit=2; break;
-            case SDLK_s:                       row=6; bit=3; break;
-            case SDLK_a:                       row=6; bit=4; break;
-            case SDLK_v:                       row=7; bit=0; break;
-            case SDLK_c:                       row=7; bit=1; break;
-            case SDLK_x:                       row=7; bit=2; break;
-            case SDLK_z:                       row=7; bit=3; break;
-            case SDLK_LSHIFT: case SDLK_RSHIFT: row=7; bit=4; break;
-            case SDLK_LEFT:      ula_.setKey(7,4,pressed); row=3; bit=4; break;
-            case SDLK_RIGHT:     ula_.setKey(7,4,pressed); row=3; bit=2; break;
-            case SDLK_DOWN:      ula_.setKey(7,4,pressed); row=3; bit=1; break;
-            case SDLK_UP:        ula_.setKey(7,4,pressed); row=3; bit=0; break;
-            case SDLK_BACKSPACE: ula_.setKey(7,4,pressed); row=3; bit=4; break;
+            // Row 0 (0xFEFE): CS  Z  X  C  V
+            case SDLK_LSHIFT: case SDLK_RSHIFT: row=0; bit=0; break;
+            case SDLK_z:      row=0; bit=1; break;
+            case SDLK_x:      row=0; bit=2; break;
+            case SDLK_c:      row=0; bit=3; break;
+            case SDLK_v:      row=0; bit=4; break;
+            // Row 1 (0xFDFE): A  S  D  F  G
+            case SDLK_a:      row=1; bit=0; break;
+            case SDLK_s:      row=1; bit=1; break;
+            case SDLK_d:      row=1; bit=2; break;
+            case SDLK_f:      row=1; bit=3; break;
+            case SDLK_g:      row=1; bit=4; break;
+            // Row 2 (0xFBFE): Q  W  E  R  T
+            case SDLK_q:      row=2; bit=0; break;
+            case SDLK_w:      row=2; bit=1; break;
+            case SDLK_e:      row=2; bit=2; break;
+            case SDLK_r:      row=2; bit=3; break;
+            case SDLK_t:      row=2; bit=4; break;
+            // Row 3 (0xF7FE): 1  2  3  4  5
+            case SDLK_1:      row=3; bit=0; break;
+            case SDLK_2:      row=3; bit=1; break;
+            case SDLK_3:      row=3; bit=2; break;
+            case SDLK_4:      row=3; bit=3; break;
+            case SDLK_5:      row=3; bit=4; break;
+            // Row 4 (0xEFFE): 0  9  8  7  6
+            case SDLK_0:      row=4; bit=0; break;
+            case SDLK_9:      row=4; bit=1; break;
+            case SDLK_8:      row=4; bit=2; break;
+            case SDLK_7:      row=4; bit=3; break;
+            case SDLK_6:      row=4; bit=4; break;
+            // Row 5 (0xDFFE): P  O  I  U  Y
+            case SDLK_p:      row=5; bit=0; break;
+            case SDLK_o:      row=5; bit=1; break;
+            case SDLK_i:      row=5; bit=2; break;
+            case SDLK_u:      row=5; bit=3; break;
+            case SDLK_y:      row=5; bit=4; break;
+            // Row 6 (0xBFFE): EN  L  K  J  H
+            case SDLK_RETURN: row=6; bit=0; break;
+            case SDLK_l:      row=6; bit=1; break;
+            case SDLK_k:      row=6; bit=2; break;
+            case SDLK_j:      row=6; bit=3; break;
+            case SDLK_h:      row=6; bit=4; break;
+            // Row 7 (0x7FFE): SP  SS  M  N  B
+            case SDLK_SPACE:                     row=7; bit=0; break;
+            case SDLK_LALT: case SDLK_RALT:     row=7; bit=1; break;
+            case SDLK_m:                         row=7; bit=2; break;
+            case SDLK_n:                         row=7; bit=3; break;
+            case SDLK_b:                         row=7; bit=4; break;
+            // Arrow keys → Caps Shift + cursor key (5/6/7/8)
+            case SDLK_LEFT:      ula_.setKey(0,0,pressed); row=3; bit=4; break; // CS+5
+            case SDLK_DOWN:      ula_.setKey(0,0,pressed); row=4; bit=4; break; // CS+6
+            case SDLK_UP:        ula_.setKey(0,0,pressed); row=4; bit=3; break; // CS+7
+            case SDLK_RIGHT:     ula_.setKey(0,0,pressed); row=4; bit=2; break; // CS+8
+            case SDLK_BACKSPACE: ula_.setKey(0,0,pressed); row=4; bit=0; break; // CS+0
             default: break;
         }
         if (row >= 0) ula_.setKey(row, bit, pressed);

@@ -72,6 +72,7 @@ void CPUZ80::clock() {
 
     // --- Maskable IRQ (level-sensitive) ------------------------------------
     if (irqLine_ && IFF1 && !eiDelay_) {
+        irqLine_ = false;   // pulse consumed; ULA deasserts /INT after 32 T-states
         halted_  = false;
         IFF1     = IFF2 = false;
         R        = (R + 1) & 0x7F;

@@ -16,6 +16,7 @@
 
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_opengl3.h>
+#include <SDL_image.h>
 
 #ifdef __APPLE__
 #  include <OpenGL/gl3.h>
@@ -89,6 +90,16 @@ bool Application::init() {
     if (!window_) {
         std::fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
         return false;
+    }
+
+    // Set window icon from assets/icon.png next to the executable
+    if (char* base = SDL_GetBasePath()) {
+        std::string iconPath = std::string(base) + "assets/icon.png";
+        SDL_free(base);
+        if (SDL_Surface* icon = IMG_Load(iconPath.c_str())) {
+            SDL_SetWindowIcon(window_, icon);
+            SDL_FreeSurface(icon);
+        }
     }
 
     glContext_ = SDL_GL_CreateContext(window_);
@@ -278,7 +289,6 @@ void Application::render() {
     if (showMemView_)  drawMemoryViewer();
     if (showDesigner_) drawMachineDesigner();
     if (showPresetDialog_) drawPresetDialog();
-    if (showKeyDebug_) drawKeyboardDebug();
 
     // Per-device panels — uses panelDevices() so fixed chips are found even
     // when they are not direct bus entries (e.g. inside C64IOSpace).
@@ -287,6 +297,11 @@ void Application::render() {
         if (it == devicePanelVisible_.end() || !it->second) continue;
         bool open = true;
         entry.device->drawPanel(entry.label.c_str(), &open);
+        // Keyboard matrix injected as a collapsible section in the owning device panel.
+        if (entry.device == &machine_.cia1())
+            injectC64KeyMatrix(entry.label.c_str(), &open);
+        else if (entry.device == &machine_.ula())
+            injectSpectrumKeyMatrix(entry.label.c_str(), &open);
         if (!open) devicePanelVisible_[entry.device] = false;
     }
 }
@@ -406,7 +421,6 @@ void Application::drawMenuBar() {
     if (ImGui::BeginMenu("Debug")) {
         ImGui::MenuItem("Disassembler",    nullptr, &showDisasm_);
         ImGui::MenuItem("Memory Viewer",   nullptr, &showMemView_);
-        ImGui::MenuItem("Keyboard Matrix", nullptr, &showKeyDebug_);
         ImGui::EndMenu();
     }
 
@@ -1329,119 +1343,143 @@ void Application::drawMachineDesigner() {
 }
 
 // ---------------------------------------------------------------------------
-// Keyboard matrix debug panel
+// Keyboard matrix — injected as a collapsible section into the owning device panel
 // ---------------------------------------------------------------------------
 
-void Application::drawKeyboardDebug() {
-    // C64 keyboard matrix reference — [col][row]
-    // Standard C64 matrix labels: kLabel[col][row], col=PA bit, row=PB bit.
-    static const char* kLabel[8][8] = {
-      //  row0      row1    row2    row3    row4    row5    row6    row7
-        {"DEL",    "3",    "5",    "7",    "9",    "+",    "\xC2\xA3", "1"   }, // col0
-        {"RETURN", "W",    "R",    "Y",    "I",    "P",    "*",    "\xE2\x86\x90"}, // col1
-        {"CUR\xE2\x86\x93", "A", "D", "G", "J",   "L",    ";",    "CTRL"}, // col2
-        {"F7",     "4",    "6",    "8",    "0",    "-",    "HOME", "2"   }, // col3
-        {"F1",     "Z",    "C",    "B",    "M",    ".",    "^",    "SPACE"}, // col4
-        {"F3",     "S",    "F",    "H",    "K",    ":",    "=",    "CBM" }, // col5
-        {"F5",     "E",    "T",    "U",    "O",    "@",    "\xE2\x86\x91", "Q"}, // col6
-        {"CUR\xE2\x86\x92", "LSHF", "X", "V",    "N",    ",",    "/",    "STOP"}, // col7
-    };
+void Application::injectC64KeyMatrix(const char* title, bool* open) {
+    if (!ImGui::Begin(title, open)) { ImGui::End(); return; }
 
-    ImGui::SetNextWindowSize({ 620.0f, 340.0f }, ImGuiCond_FirstUseEver);
-    ImGui::Begin("Keyboard Matrix", &showKeyDebug_);
+    if (ImGui::CollapsingHeader("Keyboard Matrix")) {
+        static const char* kLabel[8][8] = {
+          //  row0      row1    row2    row3    row4    row5    row6    row7
+            {"DEL",    "3",    "5",    "7",    "9",    "+",    "\xC2\xA3", "1"   },
+            {"RETURN", "W",    "R",    "Y",    "I",    "P",    "*",    "\xE2\x86\x90"},
+            {"CUR\xE2\x86\x93", "A", "D", "G", "J", "L",    ";",    "CTRL"},
+            {"F7",     "4",    "6",    "8",    "0",    "-",    "HOME", "2"   },
+            {"F1",     "Z",    "C",    "B",    "M",    ".",    "^",    "SPACE"},
+            {"F3",     "S",    "F",    "H",    "K",    ":",    "=",    "CBM" },
+            {"F5",     "E",    "T",    "U",    "O",    "@",    "\xE2\x86\x91", "Q"},
+            {"CUR\xE2\x86\x92", "LSHF", "X", "V",    "N",    ",",    "/",    "STOP"},
+        };
 
-    // Matrix mode toggle
-    {
-        bool standard = !keyMatrixTranspose_;
-        if (ImGui::RadioButton("Standard C64 KERNAL", standard))
-            keyMatrixTranspose_ = false;
-        ImGui::SameLine();
-        if (ImGui::RadioButton("MEGA65 OpenROMs", !standard))
-            keyMatrixTranspose_ = true;
-        ImGui::SameLine();
-        ImGui::TextDisabled("(?)");
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("MEGA65 OpenROMs wire PA=rows/PB=cols (transposed vs stock C64).\n"
-                              "Switch to Standard C64 KERNAL when using original C64 ROMs.");
-    }
-
-    // Last key info
-    if (lastKeyCol_ >= 0)
-        ImGui::Text("Last: %-18s  col %d, row %d  (%s)",
-            lastKeyName_.c_str(), lastKeyCol_, lastKeyRow_,
-            kLabel[lastKeyCol_][lastKeyRow_]);
-    else if (!lastKeyName_.empty())
-        ImGui::Text("Last: %-18s  (not mapped)", lastKeyName_.c_str());
-    else
-        ImGui::TextDisabled("Press a key or click a cell to inject a keypress.");
-
-    ImGui::Spacing();
-    ImGui::TextDisabled("Green = held.  Click cell to inject.  Capture keyboard via Screen panel.");
-    ImGui::Separator();
-    ImGui::Spacing();
-
-    // Column headers
-    ImGui::TextDisabled("     ");
-    for (int c = 0; c < 8; ++c) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("  Col%-2d  ", c);
-    }
-
-    // Matrix grid — buttons are clickable: mouse-hold injects a key press,
-    // mouse-release injects the corresponding key release.
-    const ImVec2 cellSz{ 62.0f, 20.0f };
-    for (int row = 0; row < 8; ++row) {
-        ImGui::TextDisabled("Row%d ", row);
-        for (int col = 0; col < 8; ++col) {
+        {
+            bool standard = !keyMatrixTranspose_;
+            if (ImGui::RadioButton("Standard C64 KERNAL", standard)) keyMatrixTranspose_ = false;
             ImGui::SameLine();
-            int kCol = col, kRow = row;
-            if (keyMatrixTranspose_) std::swap(kCol, kRow);
-            const bool held = machine_.cia1().keyState(kCol, kRow);
-            const bool isLast = (lastKeyCol_ == col && lastKeyRow_ == row);
-
-            ImVec4 bg  = held    ? ImVec4(0.1f, 0.7f, 0.2f, 0.6f)
-                       : isLast  ? ImVec4(0.2f, 0.4f, 0.8f, 0.4f)
-                                 : ImVec4(0.15f, 0.15f, 0.15f, 1.0f);
-            ImVec4 fg  = (held || isLast) ? ImVec4(1,1,1,1)
-                                          : ImVec4(0.6f, 0.6f, 0.6f, 1.0f);
-
-            ImGui::PushStyleColor(ImGuiCol_Button,        bg);
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bg);
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.1f, 0.7f, 0.2f, 0.8f));
-            ImGui::PushStyleColor(ImGuiCol_Text,          fg);
-            char id[16];
-            std::snprintf(id, sizeof(id), "##k%d%d", col, row);
-            ImGui::Button((std::string(kLabel[col][row]) + id).c_str(), cellSz);
-            ImGui::PopStyleColor(4);
-
-            // Mouse-down: press the key; mouse-up: release it
-            if (ImGui::IsItemActivated()) {
-                int ciaCol = col, ciaRow = row;
-                if (keyMatrixTranspose_) std::swap(ciaCol, ciaRow);
-                machine_.cia1().setKey(ciaCol, ciaRow, true);
-                lastKeyCol_  = col;
-                lastKeyRow_  = row;
-                lastKeyName_ = kLabel[col][row];
-            }
-            if (ImGui::IsItemDeactivated()) {
-                int ciaCol = col, ciaRow = row;
-                if (keyMatrixTranspose_) std::swap(ciaCol, ciaRow);
-                machine_.cia1().setKey(ciaCol, ciaRow, false);
-            }
-
+            if (ImGui::RadioButton("MEGA65 OpenROMs", !standard))    keyMatrixTranspose_ = true;
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("col %d, row %d  =  %s\nClick to inject keypress",
-                                  col, row, kLabel[col][row]);
+                ImGui::SetTooltip("MEGA65 OpenROMs wire PA=rows/PB=cols (transposed vs stock C64).");
+        }
+
+        if (lastKeyCol_ >= 0)
+            ImGui::Text("Last: %-18s  col %d, row %d  (%s)",
+                lastKeyName_.c_str(), lastKeyCol_, lastKeyRow_,
+                kLabel[lastKeyCol_][lastKeyRow_]);
+        else
+            ImGui::TextDisabled("Press a key (with keyboard capture) or click a cell.");
+
+        ImGui::Spacing();
+        ImGui::TextDisabled("     ");
+        for (int c = 0; c < 8; ++c) { ImGui::SameLine(); ImGui::TextDisabled("  Col%-2d  ", c); }
+
+        const ImVec2 cellSz{ 62.0f, 20.0f };
+        for (int row = 0; row < 8; ++row) {
+            ImGui::TextDisabled("Row%d ", row);
+            for (int col = 0; col < 8; ++col) {
+                ImGui::SameLine();
+                int kCol = col, kRow = row;
+                if (keyMatrixTranspose_) std::swap(kCol, kRow);
+                const bool held   = machine_.cia1().keyState(kCol, kRow);
+                const bool isLast = (lastKeyCol_ == col && lastKeyRow_ == row);
+                ImVec4 bg = held   ? ImVec4(0.1f,0.7f,0.2f,0.6f)
+                          : isLast ? ImVec4(0.2f,0.4f,0.8f,0.4f)
+                                   : ImVec4(0.15f,0.15f,0.15f,1.0f);
+                ImVec4 fg = (held || isLast) ? ImVec4(1,1,1,1) : ImVec4(0.6f,0.6f,0.6f,1.0f);
+                ImGui::PushStyleColor(ImGuiCol_Button,        bg);
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bg);
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.1f,0.7f,0.2f,0.8f));
+                ImGui::PushStyleColor(ImGuiCol_Text,          fg);
+                char id[16]; std::snprintf(id, sizeof(id), "##k%d%d", col, row);
+                ImGui::Button((std::string(kLabel[col][row]) + id).c_str(), cellSz);
+                ImGui::PopStyleColor(4);
+                if (ImGui::IsItemActivated()) {
+                    int ciaCol = col, ciaRow = row;
+                    if (keyMatrixTranspose_) std::swap(ciaCol, ciaRow);
+                    machine_.cia1().setKey(ciaCol, ciaRow, true);
+                    lastKeyCol_ = col; lastKeyRow_ = row; lastKeyName_ = kLabel[col][row];
+                }
+                if (ImGui::IsItemDeactivated()) {
+                    int ciaCol = col, ciaRow = row;
+                    if (keyMatrixTranspose_) std::swap(ciaCol, ciaRow);
+                    machine_.cia1().setKey(ciaCol, ciaRow, false);
+                }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("col %d, row %d = %s\nClick to inject keypress",
+                                      col, row, kLabel[col][row]);
+            }
         }
     }
+    ImGui::End();
+}
 
-    ImGui::Spacing();
-    ImGui::Separator();
-    const auto& cia = machine_.cia1();
-    ImGui::Text("CIA1  PA=$%02X  PB=$%02X  DDRA=$%02X  DDRB=$%02X",
-        (unsigned)cia.portA(), (unsigned)cia.portB(),
-        (unsigned)cia.ddrA(),  (unsigned)cia.ddrB());
+void Application::injectSpectrumKeyMatrix(const char* title, bool* open) {
+    if (!ImGui::Begin(title, open)) { ImGui::End(); return; }
 
+    if (ImGui::CollapsingHeader("Keyboard Matrix")) {
+        static const char* kLabel[8][5] = {
+            {"CS",  "Z", "X", "C", "V" },  // row 0 (0xFEFE)
+            {"A",   "S", "D", "F", "G" },  // row 1 (0xFDFE)
+            {"Q",   "W", "E", "R", "T" },  // row 2 (0xFBFE)
+            {"1",   "2", "3", "4", "5" },  // row 3 (0xF7FE)
+            {"0",   "9", "8", "7", "6" },  // row 4 (0xEFFE)
+            {"P",   "O", "I", "U", "Y" },  // row 5 (0xDFFE)
+            {"EN",  "L", "K", "J", "H" },  // row 6 (0xBFFE)
+            {"SP",  "SS","M", "N", "B" },  // row 7 (0x7FFE)
+        };
+
+        if (lastKeyCol_ >= 0)
+            ImGui::Text("Last: %-8s  row %d, bit %d  (%s)",
+                lastKeyName_.c_str(), lastKeyCol_, lastKeyRow_,
+                kLabel[lastKeyCol_][lastKeyRow_]);
+        else
+            ImGui::TextDisabled("Press a key (with keyboard capture) or click a cell.");
+
+        ImGui::Spacing();
+        ImGui::TextDisabled("     ");
+        for (int b = 0; b < 5; ++b) { ImGui::SameLine(); ImGui::TextDisabled("  Bit%-2d  ", b); }
+
+        const ImVec2 cellSz{ 52.0f, 20.0f };
+        for (int row = 0; row < 8; ++row) {
+            ImGui::TextDisabled("Row%d ", row);
+            for (int bit = 0; bit < 5; ++bit) {
+                ImGui::SameLine();
+                const bool held   = machine_.ula().keyState(row, bit);
+                const bool isLast = (lastKeyCol_ == row && lastKeyRow_ == bit);
+                ImVec4 bg = held   ? ImVec4(0.1f,0.7f,0.2f,0.6f)
+                          : isLast ? ImVec4(0.2f,0.4f,0.8f,0.4f)
+                                   : ImVec4(0.15f,0.15f,0.15f,1.0f);
+                ImVec4 fg = (held || isLast) ? ImVec4(1,1,1,1) : ImVec4(0.6f,0.6f,0.6f,1.0f);
+                ImGui::PushStyleColor(ImGuiCol_Button,        bg);
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bg);
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.1f,0.7f,0.2f,0.8f));
+                ImGui::PushStyleColor(ImGuiCol_Text,          fg);
+                char id[16]; std::snprintf(id, sizeof(id), "##s%d%d", row, bit);
+                ImGui::Button((std::string(kLabel[row][bit]) + id).c_str(), cellSz);
+                ImGui::PopStyleColor(4);
+                if (ImGui::IsItemActivated()) {
+                    machine_.ula().setKey(row, bit, true);
+                    lastKeyCol_ = row; lastKeyRow_ = bit; lastKeyName_ = kLabel[row][bit];
+                }
+                if (ImGui::IsItemDeactivated())
+                    machine_.ula().setKey(row, bit, false);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("row %d, bit %d = %s\nClick to inject keypress",
+                                      row, bit, kLabel[row][bit]);
+            }
+        }
+    }
     ImGui::End();
 }
 
@@ -1550,7 +1588,7 @@ void Application::drawPresetDialog() {
     }
 
     // Keyboard matrix option (shown for presets that declare it)
-    if (preset.keyMatrixTranspose || !preset.roms.empty()) {
+    if (preset.keyMatrixTranspose) {
         ImGui::Spacing();
         ImGui::TextUnformatted("ROM target:");
         ImGui::SameLine();

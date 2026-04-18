@@ -27,6 +27,22 @@ endif()
 find_package(SDL2 REQUIRED)
 
 # ---------------------------------------------------------------------------
+# SDL2_image  (install via: brew install sdl2_image)
+# ---------------------------------------------------------------------------
+if(APPLE)
+    execute_process(
+        COMMAND brew --prefix sdl2_image
+        OUTPUT_VARIABLE SDL2_IMAGE_BREW_PREFIX
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(SDL2_IMAGE_BREW_PREFIX)
+        list(APPEND CMAKE_PREFIX_PATH "${SDL2_IMAGE_BREW_PREFIX}")
+    endif()
+endif()
+find_package(SDL2_image REQUIRED)
+
+# ---------------------------------------------------------------------------
 # OpenGL
 # ---------------------------------------------------------------------------
 find_package(OpenGL REQUIRED)
@@ -105,7 +121,7 @@ endif()
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE src)
-target_link_libraries(${PROJECT_NAME} PRIVATE imgui_lib SDL2::SDL2 OpenGL::GL nlohmann_json::nlohmann_json)
+target_link_libraries(${PROJECT_NAME} PRIVATE imgui_lib SDL2::SDL2 SDL2_image::SDL2_image OpenGL::GL nlohmann_json::nlohmann_json)
 
 if(APPLE)
     target_compile_definitions(${PROJECT_NAME} PRIVATE GL_SILENCE_DEPRECATION)
@@ -131,6 +147,12 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         "${CMAKE_SOURCE_DIR}/presets"
         "$<TARGET_FILE_DIR:${PROJECT_NAME}>/presets"
     COMMENT "Copying presets/ to build directory"
+)
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/assets"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/assets"
+    COMMENT "Copying assets/ to build directory"
 )
 
 if(CA65_EXE AND LD65_EXE)

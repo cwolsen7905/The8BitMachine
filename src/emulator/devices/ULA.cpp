@@ -28,16 +28,16 @@ const uint8_t ULA::kB[16] = {
 // Spectrum keyboard matrix — 8 half-rows × 5 keys
 // Row selected when corresponding address line A8-A15 is LOW.
 //
-//   Row 0 (A8 =0, port 0xFEFE): B  N  M  Sym Space
-//   Row 1 (A9 =0, port 0xFDFE): H  J  K  L   Enter
-//   Row 2 (A10=0, port 0xFBFE): Y  U  I  O   P
-//   Row 3 (A11=0, port 0xF7FE): 6  7  8  9   0
-//   Row 4 (A12=0, port 0xEFFE): 5  4  3  2   1
-//   Row 5 (A13=0, port 0xDFFE): T  R  E  W   Q
-//   Row 6 (A14=0, port 0xBFFE): G  F  D  S   A
-//   Row 7 (A15=0, port 0x7FFE): V  C  X  Z   Caps
+//   Row 0 (A8 =0, port 0xFEFE): CS  Z  X  C  V
+//   Row 1 (A9 =0, port 0xFDFE): A   S  D  F  G
+//   Row 2 (A10=0, port 0xFBFE): Q   W  E  R  T
+//   Row 3 (A11=0, port 0xF7FE): 1   2  3  4  5
+//   Row 4 (A12=0, port 0xEFFE): 0   9  8  7  6
+//   Row 5 (A13=0, port 0xDFFE): P   O  I  U  Y
+//   Row 6 (A14=0, port 0xBFFE): EN  L  K  J  H
+//   Row 7 (A15=0, port 0x7FFE): SP  SS M  N  B
 //
-// Bit 0 = left key of each group (closest to centre), bit 4 = right key.
+// Bit 0 = key nearest centre of keyboard, bit 4 = key farthest from centre.
 // Active-low: 0 = key pressed, 1 = key released.
 // ---------------------------------------------------------------------------
 
@@ -102,6 +102,11 @@ void ULA::setKey(int row, int bit, bool pressed) {
         keyMatrix_[row] &= ~(1 << bit);
     else
         keyMatrix_[row] |=  (1 << bit);
+}
+
+bool ULA::keyState(int row, int bit) const {
+    if (row < 0 || row > 7 || bit < 0 || bit > 4) return false;
+    return !(keyMatrix_[row] & (1 << bit));
 }
 
 void ULA::clearAllKeys() {
@@ -198,21 +203,6 @@ void ULA::drawPanel(const char* title, bool* open) {
     ImGui::Separator();
     ImGui::Text("Frame  %d", frameCount_);
     ImGui::Text("Flash  %s", flashState_ ? "ON" : "off");
-
-    ImGui::Separator();
-    ImGui::Text("Key matrix (rows 7-0, bits 4-0, 0=pressed):");
-    for (int row = 7; row >= 0; --row) {
-        ImGui::Text("  Row %d: ", row);
-        ImGui::SameLine();
-        for (int bit = 4; bit >= 0; --bit) {
-            bool pressed = !(keyMatrix_[row] & (1 << bit));
-            if (pressed)
-                ImGui::TextColored({0.2f,1.0f,0.2f,1.0f}, "1");
-            else
-                ImGui::TextColored({0.4f,0.4f,0.4f,1.0f}, "0");
-            if (bit > 0) ImGui::SameLine(0, 4);
-        }
-    }
 
     ImGui::End();
 }

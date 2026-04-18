@@ -92,10 +92,9 @@ private:
     bool showDisasm_   = true;
     bool showMemView_  = false;
     bool showDesigner_ = false;
-    bool showKeyDebug_ = false;
 
     // -----------------------------------------------------------------------
-    // Keyboard debug state (C64 matrix panel)
+    // Keyboard matrix state (shared by C64 and Spectrum inject panels)
     // -----------------------------------------------------------------------
     std::string lastKeyName_;
     int         lastKeyCol_ = -1;
@@ -195,5 +194,6 @@ private:
     void scanPresets();
     void drawPresetDialog();
     void buildActivePreset();
-    void drawKeyboardDebug();
+    void injectC64KeyMatrix(const char* title, bool* open);
+    void injectSpectrumKeyMatrix(const char* title, bool* open);
 };
