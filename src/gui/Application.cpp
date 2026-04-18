@@ -369,6 +369,7 @@ void Application::drawMenuBar() {
             machine_.resetAddressMap();
             machine_.reset();
             screenTexW_ = 0; screenTexH_ = 0;
+            setDisasmLabels("");
         }
 
         ImGui::Separator();
@@ -881,6 +882,13 @@ void Application::drawDisassembler() {
             if (!line.operand.empty()) {
                 ImGui::SameLine(0.0f, 6.0f);
                 ImGui::TextDisabled("%s", line.operand.c_str());
+            }
+        }
+        {
+            auto it = disasmLabels_.find(line.addr);
+            if (it != disasmLabels_.end()) {
+                ImGui::SameLine(0.0f, 10.0f);
+                ImGui::TextDisabled("; %s", it->second.c_str());
             }
         }
 
@@ -1837,6 +1845,7 @@ void Application::buildActivePreset() {
         cyclesPerFrame_  = preset.cyclesPerFrame > 0 ? preset.cyclesPerFrame : 16'667;
         cycleCount_      = 0;
         emulatorRunning_ = false;
+        setDisasmLabels(preset.presetType);
         termPrint(result.message);
         termPrint(machine_.cpu().stateString());
         showPresetDialog_ = false;
@@ -1846,6 +1855,46 @@ void Application::buildActivePreset() {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+void Application::setDisasmLabels(const std::string& presetType) {
+    disasmLabels_.clear();
+    disasmLabels_[Bus::CHAR_OUT_ADDR] = "CHAR_OUT";
+
+    if (presetType == "c64") {
+        disasmLabels_[0x0314] = "IRQ-Vec";
+        disasmLabels_[0x0316] = "NMI-Vec";
+        disasmLabels_[0xFF81] = "CINT";
+        disasmLabels_[0xFF84] = "IOINIT";
+        disasmLabels_[0xFF87] = "RAMTAS";
+        disasmLabels_[0xFF8A] = "RESTOR";
+        disasmLabels_[0xFF8D] = "VECTOR";
+        disasmLabels_[0xFFD2] = "CHROUT";
+        disasmLabels_[0xFFE4] = "GETIN";
+        disasmLabels_[0xFFFA] = "NMI";
+        disasmLabels_[0xFFFC] = "RESET";
+        disasmLabels_[0xFFFE] = "IRQ";
+    } else if (presetType == "spectrum48") {
+        disasmLabels_[0x0000] = "RESET";
+        disasmLabels_[0x0038] = "IRQ";
+        disasmLabels_[0x0066] = "NMI";
+        disasmLabels_[0x4000] = "BITMAP";
+        disasmLabels_[0x5800] = "ATTRS";
+    } else if (presetType == "apple2e") {
+        disasmLabels_[0xC000] = "KBD";
+        disasmLabels_[0xC010] = "KBDSTRB";
+        disasmLabels_[0xC050] = "GRAPHICS";
+        disasmLabels_[0xC051] = "TEXT";
+        disasmLabels_[0xC052] = "FULLSCR";
+        disasmLabels_[0xC053] = "MIXED";
+        disasmLabels_[0xC054] = "PAGE1";
+        disasmLabels_[0xC055] = "PAGE2";
+        disasmLabels_[0xC056] = "LORES";
+        disasmLabels_[0xC057] = "HIRES";
+        disasmLabels_[0xFFFA] = "NMI";
+        disasmLabels_[0xFFFC] = "RESET";
+        disasmLabels_[0xFFFE] = "IRQ";
+    }
+}
 
 void Application::termPrint(const std::string& line) {
     termLines_.push_back(line);

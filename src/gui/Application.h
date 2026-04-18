@@ -126,6 +126,7 @@ private:
     bool     disasmFollowPC_  = true;
     uint16_t disasmViewAddr_  = 0x0200;
     char     disasmGotoInput_[5] = "0200";
+    std::unordered_map<uint16_t, std::string> disasmLabels_;
 
     // -----------------------------------------------------------------------
     // Memory viewer
@@ -199,6 +200,7 @@ private:
     void drawDisassembler();
     void drawBreakpoints();
     void drawWatchpoints();
+    void setDisasmLabels(const std::string& presetType);
     void drawMemoryViewer();
     void drawMachineDesigner();
 

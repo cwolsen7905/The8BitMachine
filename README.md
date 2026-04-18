@@ -57,7 +57,7 @@ Zilog Z80:
 - **Screen panel** — live framebuffer display; dimensions switch dynamically when the preset changes (400×280 for C64/VIC, 352×272 for ZX Spectrum/ULA); C64: 320×200 active area + 40 px border, character mode with embedded font, color RAM, fine scroll; Spectrum: 256×192 active area + 48 px / 40 px border, pixel+attribute rendering with flash, 16-colour palette (normal + bright)
 - **Terminal panel** — green-on-black scrollable log with command input
 - **CPU State panel** — live register and flag display, CIA1 timer status, cycle counter
-- **Disassembler panel** (Debug menu) — live disassembly with Follow PC, Go To address, highlighted current instruction; click any row to toggle a breakpoint (red `●`); emulator halts automatically when PC hits a breakpoint
+- **Disassembler panel** (Debug menu) — live disassembly with Follow PC, Go To address, highlighted current instruction; click any row to toggle a breakpoint (red `●`); emulator halts automatically when PC hits a breakpoint; known addresses annotated with dim `; LABEL` comments (preset-specific KERNAL/ROM entry points + universal `CHAR_OUT`)
 - **Breakpoints panel** (Debug menu) — sorted list of all active breakpoints; click to navigate the Disassembler; `x` to delete individually; Clear All; hex input to add a breakpoint by address
 - **Watchpoints** (Debug menu) — break on memory read, write, or both at a specific address; per-entry R/W toggles; terminal prints address and direction when triggered
 - **Memory Viewer panel** (Debug menu) — full hex editor (imgui_memory_editor); click any byte to edit in-place, Follow PC toggle, PC highlighted in yellow, built-in data preview and column options
