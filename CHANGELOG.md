@@ -8,9 +8,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Fixed
-- **Screen not switching when loading a second preset** — `buildC64Preset()` never set `activeScreen_`, so switching from Apple IIe → C64 left the Apple II framebuffer displayed; `activeScreen_` is now set to the VIC framebuffer at the end of a successful C64 preset build
-
 ### Added
 - **CIA "Fire Now" timer trigger** — Timer A and Timer B sections in the CIA panel each have a "Fire Now" button that immediately invokes the underflow handler: reloads the counter from the latch, sets ICR flags, and fires the IRQ if the mask allows it; useful for testing interrupt handlers without waiting for the timer to count down
 - **SID per-voice mute** — Mute/Unmute button in each Voice section of the SID panel; muted voices are zeroed after waveform synthesis but before filter routing so the filter state is unaffected; header shows `[MUTED]` when active; toggle is thread-safe under the existing SID mutex
@@ -27,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Author and copyright in About dialog** — About → The 8-Bit Machine now shows author name, email, and copyright year
 
 ### Fixed
+- **Screen not switching when loading a second preset** — `buildC64Preset()` never set `activeScreen_`, so switching from Apple IIe → C64 left the Apple II framebuffer displayed; `activeScreen_` is now set to the VIC framebuffer at the end of a successful C64 preset build
 - **VIC panel ImGui ID conflict** — five colour-swatch `ColorButton` calls shared the same `"##c"` ID; each row now wraps with `PushID(regIdx)` / `PopID()` to give each button a unique identity and suppress the Dear ImGui assertion
 - **Spectrum 48K config round-trip** — `loadConfig()` previously only handled the `"c64"` preset type and returned an error for `"spectrum48"`; preset type is now dispatched correctly so saved Spectrum configs reload properly
 - **Contained Devices after device removal** — `unmountAt()` removed devices from the bus and from `dynamicDevices_` but not from `activeFixedDevices_`; removed devices now correctly disappear from the Contained Devices panel
