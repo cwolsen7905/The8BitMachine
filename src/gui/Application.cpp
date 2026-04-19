@@ -193,10 +193,12 @@ bool Application::init() {
         if (!sessionPath.empty()) {
             const auto result = machine_.loadConfig(sessionPath);
             if (result.ok) {
-                if (result.hasPreset)
+                if (result.hasPreset) {
                     keyMatrixTranspose_ = result.keyMatrixTranspose;
-                else
+                    rewirePeripherals(result.presetType);
+                } else {
                     machine_.reset();
+                }
                 if (result.cyclesPerFrame > 0)
                     cyclesPerFrame_ = result.cyclesPerFrame;
                 cycleCount_ = 0;
@@ -249,6 +251,10 @@ void Application::processEvents() {
         if (e.type == SDL_QUIT)
             running_ = false;
 
+        if (e.type == SDL_WINDOWEVENT &&
+            e.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+            machine_.clearKeys();
+
         if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP) {
             const SDL_Keycode sym     = e.key.keysym.sym;
             const bool        pressed = (e.type == SDL_KEYDOWN);
@@ -289,6 +295,8 @@ void Application::processEvents() {
         for (int i = 0; i < cyclesPerFrame_; ++i) {
             machine_.clock();
             cpu.clock();
+            drive1541_.clock();
+            machine_.cia2().updateIECInputBits();
             ++cycleCount_;
 
             if (watchpointHit_) {
@@ -349,6 +357,15 @@ void Application::render() {
             injectSpectrumKeyMatrix(entry.label.c_str(), &open);
         if (!open) devicePanelVisible_[entry.device] = false;
     }
+
+    // Peripheral panels
+    for (IPeripheral* p : peripherals_) {
+        auto* hp = dynamic_cast<IHasPanel*>(p);
+        if (!hp) continue;
+        bool& vis = peripheralPanelVisible_[p];
+        if (!vis) continue;
+        hp->drawPanel(p->peripheralName(), &vis);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -381,8 +398,9 @@ void Application::drawMenuBar() {
         if (ImGui::BeginMenu("Load Preset", !presets_.empty())) {
             for (int pi = 0; pi < (int)presets_.size(); ++pi) {
                 if (ImGui::MenuItem(presets_[pi].name.c_str())) {
-                    activePresetIdx_  = pi;
-                    showPresetDialog_ = true;
+                    activePresetIdx_    = pi;
+                    showPresetDialog_   = true;
+                    keyMatrixTranspose_ = presets_[pi].keyMatrixTranspose;
                     presetMsg_.clear();
                     // Pre-populate ROM path slots for this preset
                     for (const auto& r : presets_[pi].roms)
@@ -467,6 +485,8 @@ void Application::drawMenuBar() {
     }
 
     // Debug ---------------------------------------------------------------
+    drawPeripheralsMenu();
+
     if (ImGui::BeginMenu("Debug")) {
         ImGui::MenuItem("Disassembler",    nullptr, &showDisasm_);
         ImGui::MenuItem("Breakpoints",     nullptr, &showBreakpoints_);
@@ -672,6 +692,8 @@ void Application::emulatorStep() {
     do {
         machine_.clock();
         cpu.clock();
+        drive1541_.clock();
+        machine_.cia2().updateIECInputBits();
         ++cycleCount_;
     } while (!cpu.complete());
     termPrint(cpu.stateString());
@@ -841,4 +863,57 @@ void Application::loadMachineConfigDialog() {
         emulatorRunning_ = false;
         termPrint(machine_.cpu().stateString());
     }
+}
+
+// ---------------------------------------------------------------------------
+// Peripherals menu
+// ---------------------------------------------------------------------------
+
+void Application::drawPeripheralsMenu() {
+    if (peripherals_.empty()) return;
+
+    if (!ImGui::BeginMenu("Peripherals")) return;
+
+    for (IPeripheral* p : peripherals_) {
+        ImGui::PushID(p);
+
+        // Panel toggle (if the peripheral has one)
+        if (dynamic_cast<IHasPanel*>(p)) {
+            bool& vis = peripheralPanelVisible_[p];
+            ImGui::MenuItem(p->peripheralName(), nullptr, &vis);
+        } else {
+            ImGui::TextDisabled("%s", p->peripheralName());
+        }
+
+        // Mount / Eject sub-menu
+        if (ImGui::BeginMenu("  Image")) {
+            if (!p->mountedImage().empty()) {
+                ImGui::TextDisabled("%s", p->mountedImage().c_str());
+                if (ImGui::MenuItem("Eject")) p->eject();
+            } else {
+                ImGui::TextDisabled("(no image)");
+            }
+            if (ImGui::MenuItem("Mount .d64...")) {
+                std::string path = FileDialog::openFile("D64 disk image\0*.d64\0All files\0*.*\0");
+                if (!path.empty()) {
+                    if (!p->mount(path))
+                        termPrint("[Drive] Mount failed: " + p->mountError());
+                    else
+                        termPrint("[Drive] Mounted: " + path);
+                }
+            }
+            ImGui::EndMenu();
+        }
+
+        if (!p->mountError().empty()) {
+            ImGui::SameLine();
+            ImGui::TextColored({ 1,0.3f,0.3f,1 }, "!");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", p->mountError().c_str());
+        }
+
+        ImGui::PopID();
+    }
+
+    ImGui::EndMenu();
 }

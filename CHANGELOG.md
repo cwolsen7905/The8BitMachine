@@ -9,6 +9,26 @@ Releases are tagged on the `main` branch; active development happens on `dev`.
 
 ## [Unreleased]
 
+### Added
+- **VS Code integration** — `.vscode/` directory with three config files: `c_cpp_properties.json` points IntelliSense at `build/compile_commands.json` for accurate include resolution; `tasks.json` provides cmake configure, build (default ⇧⌘B with `$gcc` problem matcher), and roms targets; `launch.json` launches the app via lldb with `cwd` set to `Resources/` so preset paths resolve correctly
+- **`IIECDevice` interface** (`src/emulator/core/IIECDevice.h`) — `IECLines` struct (ATN/CLK/DATA booleans) + `setIECLines()` / `getIECLines()` pure virtuals; CIA6526 connects devices via `connectIEC()` and propagates bus state each cycle
+- **CIA6526 IEC bus wiring** — CIA2 drives ATN (PA3), CLK (PA4), DATA (PA5) onto the IEC bus using correct open-collector polarity; `updateIECInputBits()` computes the wired-AND bus state and feeds CLK-in (PA6) and DATA-in (PA7) back into `$DD00` reads; `connectIEC()` / `disconnectAllIEC()` / `iecDriven()` added; `connectIEC()` guards against duplicate registration
+- **`IPeripheral` interface** (`src/emulator/core/IPeripheral.h`) — `peripheralName()`, `mountedImage()`, `mount(path)`, `eject()`, `mountError()` pure virtuals; decouples the UI from concrete peripheral types
+- **`D64Image`** (`src/emulator/devices/D64Image.h/.cpp`) — CBM .d64 disk image parser: 35-track geometry, sectors-per-track table (21/19/18/17 by group), directory at track 18, linked-sector chain reads, PETSCII→ASCII conversion, `firstPRG()` / `findPRG(name)`, `diskName()`, `freeBlocks()`
+- **`Drive1541`** (`src/emulator/devices/Drive1541.h/.cpp`) — MOS 1541 disk drive implemented as a software CBM Serial (IEC) state machine; inherits `IIECDevice`, `IPeripheral`, `IHasPanel`; handles LISTEN/TALK/ATN command decode (LISTEN, TALK, UNLISTEN, secondary addresses), two-phase CLK bit transfer, LOAD `"*",8,1` workflow serving the first PRG from a mounted .d64; ImGui panel shows bus line state, transfer state, and mounted image
+- **Peripherals menu** — "Peripherals" menu in the menu bar lists all wired peripherals for the active preset; each entry has a submenu with "Mount image…" (native file browser) and "Eject" actions; drive panel opened via "Show Panel"; present only when peripherals are registered
+- **`rewirePeripherals(presetType)`** — extracted helper that registers peripherals and connects CIA2 IEC for the given preset; called after both UI-driven preset loads and session restores so the drive is always wired after a restart
+- **`MachineConfigResult::presetType`** — `loadConfig()` now populates this field so session restore knows which preset type to rewire
+
+### Fixed
+- **Drive1541 IEC ATN acknowledge timing** — the drive previously asserted DATA synchronously on ATN falling edge, causing the KERNAL to detect a "device not present" error (~30 cycles later at `$ED44`) and abort before sending any command bytes; DATA is now held released at ATN fall and asserted only after the host releases CLK ("ready to send"), matching the real 1541 asynchronous NMI-driven response
+- **D64 directory block count** — file size in the directory entry was read from bytes 28–29 (`$1C–$1D`) instead of the correct 30–31 (`$1E–$1F`), showing wrong block counts in the drive panel
+- **CIA2 IEC line polarity** — output bit 1 (written to PA3–PA5) drives the bus line LOW (open-collector); previously the polarity was inverted, causing the KERNAL to see asserted lines as released and vice-versa
+- **CIA2 PA6/PA7 IEC readback** — `read($DD00)` now merges `iecInputBits_` (CLK-in / DATA-in from the wired-AND bus) with `pra_` output bits; previously always returned `pra_`, so the KERNAL could never see CLK or DATA from the drive
+- **C64 `*` and `@` key mapping** — `SDLK_RIGHTBRACKET` (`]`) now maps to C64 `*`; `SDLK_LEFTBRACKET` (`[`) maps to C64 `@`; previously `*` was only reachable via the numpad multiply key, unavailable on most laptops
+- **`keyMatrixTranspose` default changed to `false`** — Standard KERNAL is now the default; MEGA65 OpenROMs remain selectable via the radio button in the C64 preset dialog; preset JSON `key_matrix_transpose` field defaults to `false`
+- **Peripheral registry not restored on session reload** — `loadConfig()` now calls `rewirePeripherals()` so drives and CIA2 IEC connections are re-established after restarting with a saved C64 session
+
 ---
 
 ## [0.31.0] - 2026-04-18

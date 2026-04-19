@@ -110,7 +110,7 @@ void Application::scanPresets() {
         info.presetType        = root.value("preset_type", "");
         info.cpu               = root.value("cpu", "");
         info.cyclesPerFrame    = root.value("cycles_per_frame", 0);
-        info.keyMatrixTranspose = root.value("key_matrix_transpose", true);
+        info.keyMatrixTranspose = root.value("key_matrix_transpose", false);
 
         if (root.contains("roms") && root["roms"].is_array()) {
             for (const auto& r : root["roms"]) {
@@ -181,8 +181,8 @@ void Application::drawPresetDialog() {
         ImGui::PopID();
     }
 
-    // Keyboard matrix option (shown for presets that declare it)
-    if (preset.keyMatrixTranspose) {
+    // Keyboard matrix option (shown for C64 presets)
+    if (preset.presetType == "c64") {
         ImGui::Spacing();
         ImGui::TextUnformatted("ROM target:");
         ImGui::SameLine();
@@ -252,8 +252,27 @@ void Application::buildActivePreset() {
             disasmLabels_[addr] = label;
         allowRomEdit_   = false;
         memColorsDirty_ = true;
+
+        rewirePeripherals(preset.presetType);
+
         termPrint(result.message);
         termPrint(machine_.cpu().stateString());
         showPresetDialog_ = false;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// rewirePeripherals — connects peripheral devices to the machine for a given
+// preset type.  Called after both UI-driven preset loads and session restores.
+// ---------------------------------------------------------------------------
+
+void Application::rewirePeripherals(const std::string& presetType) {
+    peripherals_.clear();
+    peripheralPanelVisible_.clear();
+
+    if (presetType == "c64") {
+        machine_.cia2().connectIEC(&drive1541_);
+        peripherals_.push_back(&drive1541_);
+        peripheralPanelVisible_[&drive1541_] = false;
     }
 }

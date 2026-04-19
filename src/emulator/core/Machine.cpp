@@ -1,9 +1,27 @@
 #include "emulator/core/Machine.h"
+#include "emulator/devices/C64KeyMapper.h"
 #include <SDL.h>
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+
+// ---------------------------------------------------------------------------
+// LambdaKeyMapper — wraps ad-hoc key handler lambdas behind IKeyMapper so
+// ULA and Apple II handlers don't need their own concrete mapper classes.
+// ---------------------------------------------------------------------------
+namespace {
+class LambdaKeyMapper : public IKeyMapper {
+public:
+    LambdaKeyMapper(std::function<void(int, bool)> key, std::function<void()> clear)
+        : key_(std::move(key)), clear_(std::move(clear)) {}
+    void keyEvent(int sym, bool pressed) override { key_(sym, pressed); }
+    void clearKeys() override { clear_(); }
+private:
+    std::function<void(int, bool)> key_;
+    std::function<void()>          clear_;
+};
+} // namespace
 
 Machine::Machine() : c64IOSpace_(&vic_, &sid_, &cia1_, &cia2_) {
     // Fixed chips are always clocked directly in Machine::clock(); the bus
@@ -102,7 +120,9 @@ MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
     cpu6510_.reset();   // fires onIOWrite with power-on state ($37/$2F → BASIC+IO+KERNAL)
 
     activeFixedDevices_ = { &vic_, &sid_, &cia1_, &cia2_ };
-    installCIA1KeyHandler(keyMatrixTranspose);
+    keyMapper_ = keyMatrixTranspose
+        ? std::make_unique<MEGA65KeyMapper>(cia1_)
+        : std::make_unique<C64StandardKeyMapper>(cia1_);
 
     // Record preset so saveConfig can serialise it instead of the device list.
     hasPreset_    = true;
@@ -116,84 +136,9 @@ MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
 // Keyboard handler installers
 // ---------------------------------------------------------------------------
 
-void Machine::installCIA1KeyHandler(bool transpose) {
-    clearKeysHandler_ = [this]() { cia1_.clearAllKeys(); };
-    keyHandler_ = [this, transpose](int sym, bool pressed) {
-        int col = -1, row = -1;
-        switch (sym) {
-            case SDLK_DELETE:
-            case SDLK_BACKSPACE: col=0; row=0; break;
-            case SDLK_3:         col=0; row=1; break;
-            case SDLK_5:         col=0; row=2; break;
-            case SDLK_7:         col=0; row=3; break;
-            case SDLK_9:         col=0; row=4; break;
-            case SDLK_KP_PLUS:   col=0; row=5; break;
-            case SDLK_1:         col=0; row=7; break;
-            case SDLK_RETURN:    col=1; row=0; break;
-            case SDLK_w:         col=1; row=1; break;
-            case SDLK_r:         col=1; row=2; break;
-            case SDLK_y:         col=1; row=3; break;
-            case SDLK_i:         col=1; row=4; break;
-            case SDLK_p:         col=1; row=5; break;
-            case SDLK_KP_MULTIPLY: col=1; row=6; break;
-            case SDLK_BACKQUOTE: col=1; row=7; break;
-            case SDLK_DOWN:      col=2; row=0; break;
-            case SDLK_a:         col=2; row=1; break;
-            case SDLK_d:         col=2; row=2; break;
-            case SDLK_g:         col=2; row=3; break;
-            case SDLK_j:         col=2; row=4; break;
-            case SDLK_l:         col=2; row=5; break;
-            case SDLK_SEMICOLON: col=2; row=6; break;
-            case SDLK_LCTRL:     col=2; row=7; break;
-            case SDLK_F7:        col=3; row=0; break;
-            case SDLK_4:         col=3; row=1; break;
-            case SDLK_6:         col=3; row=2; break;
-            case SDLK_8:         col=3; row=3; break;
-            case SDLK_0:         col=3; row=4; break;
-            case SDLK_MINUS:     col=3; row=5; break;
-            case SDLK_HOME:      col=3; row=6; break;
-            case SDLK_2:         col=3; row=7; break;
-            case SDLK_F1:        col=4; row=0; break;
-            case SDLK_z:         col=4; row=1; break;
-            case SDLK_c:         col=4; row=2; break;
-            case SDLK_b:         col=4; row=3; break;
-            case SDLK_m:         col=4; row=4; break;
-            case SDLK_PERIOD:    col=4; row=5; break;
-            case SDLK_SPACE:     col=4; row=7; break;
-            case SDLK_F3:        col=5; row=0; break;
-            case SDLK_s:         col=5; row=1; break;
-            case SDLK_f:         col=5; row=2; break;
-            case SDLK_h:         col=5; row=3; break;
-            case SDLK_k:         col=5; row=4; break;
-            case SDLK_EQUALS:    col=5; row=6; break;
-            case SDLK_LALT:      col=5; row=7; break;
-            case SDLK_F5:        col=6; row=0; break;
-            case SDLK_e:         col=6; row=1; break;
-            case SDLK_t:         col=6; row=2; break;
-            case SDLK_u:         col=6; row=3; break;
-            case SDLK_o:         col=6; row=4; break;
-            case SDLK_q:         col=6; row=7; break;
-            case SDLK_RIGHT:     col=7; row=0; break;
-            case SDLK_LSHIFT:
-            case SDLK_RSHIFT:    col=7; row=1; break;
-            case SDLK_x:         col=7; row=2; break;
-            case SDLK_v:         col=7; row=3; break;
-            case SDLK_n:         col=7; row=4; break;
-            case SDLK_COMMA:     col=7; row=5; break;
-            case SDLK_SLASH:     col=7; row=6; break;
-            default: break;
-        }
-        if (col >= 0) {
-            int ciaCol = col, ciaRow = row;
-            if (transpose) std::swap(ciaCol, ciaRow);
-            cia1_.setKey(ciaCol, ciaRow, pressed);
-        }
-    };
-}
-
 void Machine::installULAKeyHandler() {
-    clearKeysHandler_ = [this]() { ula_.clearAllKeys(); };
-    keyHandler_ = [this](int sym, bool pressed) {
+    keyMapper_ = std::make_unique<LambdaKeyMapper>(
+        [this](int sym, bool pressed) {
         int row = -1, bit = -1;
         switch (sym) {
             // Row 0 (0xFEFE): CS  Z  X  C  V
@@ -253,19 +198,20 @@ void Machine::installULAKeyHandler() {
             default: break;
         }
         if (row >= 0) ula_.setKey(row, bit, pressed);
-    };
+        },
+        [this]() { ula_.clearAllKeys(); }
+    );
 }
 
 // ---------------------------------------------------------------------------
 // Apple IIe key handler — converts SDL keycodes to Apple II ASCII
 // ---------------------------------------------------------------------------
 void Machine::installAppleIIKeyHandler() {
-    clearKeysHandler_ = [this]() { appleIIIO_.pressKey(0); };
-
     auto shiftHeld = std::make_shared<bool>(false);
     auto ctrlHeld  = std::make_shared<bool>(false);
 
-    keyHandler_ = [this, shiftHeld, ctrlHeld](int sym, bool pressed) {
+    keyMapper_ = std::make_unique<LambdaKeyMapper>(
+        [this, shiftHeld, ctrlHeld](int sym, bool pressed) {
         // Track modifier keys
         if (sym == SDLK_LSHIFT || sym == SDLK_RSHIFT) { *shiftHeld = pressed; return; }
         if (sym == SDLK_LCTRL  || sym == SDLK_RCTRL)  { *ctrlHeld  = pressed; return; }
@@ -318,12 +264,14 @@ void Machine::installAppleIIKeyHandler() {
         }
 
         if (ascii) appleIIIO_.pressKey(ascii);
-    };
+        },
+        [this]() { appleIIIO_.pressKey(0); }
+    );
 }
 
 void Machine::buildDefaultMap() {
     activeFixedDevices_ = { &vic_, &sid_, &cia1_, &cia2_ };
-    installCIA1KeyHandler(false);  // default machine uses CIA1 with standard (no-transpose) mapping
+    keyMapper_ = std::make_unique<C64StandardKeyMapper>(cia1_);
     // Bus iterates entries in registration order — higher-priority devices
     // must be registered first so they shadow the catch-all RAM entry.
     bus_.addDevice(0xD000, 0xD3FF, &vic_,  "VIC-IIe $D000–$D3FF");
@@ -350,8 +298,7 @@ void Machine::resetAddressMap() {
     hasPreset_ = false;
     activeScreen_ = { VIC6566::WIDTH, VIC6566::HEIGHT, vic_.framebuffer() };
     activeCpu_ = &cpu8502_;
-    keyHandler_       = nullptr;
-    clearKeysHandler_ = nullptr;
+    keyMapper_ = nullptr;
     buildDefaultMap();
 }
 
@@ -560,8 +507,8 @@ MachineConfigResult Machine::buildSpectrumPreset(const std::string& romPath) {
     return { true, "Spectrum 48K preset built." };
 }
 
-void Machine::keyEvent(int sym, bool pressed) { if (keyHandler_) keyHandler_(sym, pressed); }
-void Machine::clearKeys()                     { if (clearKeysHandler_) clearKeysHandler_(); }
+void Machine::keyEvent(int sym, bool pressed) { if (keyMapper_) keyMapper_->keyEvent(sym, pressed); }
+void Machine::clearKeys()                     { if (keyMapper_) keyMapper_->clearKeys(); }
 
 void Machine::reset() {
     for (IBusDevice* dev : activeFixedDevices_) dev->reset();
@@ -806,11 +753,12 @@ MachineConfigResult Machine::loadConfig(const std::string& path) {
             const std::string kernal = pc.value("kernal", "");
             const std::string basic  = pc.value("basic",  "");
             const std::string chr    = pc.value("char",   "");
-            const bool        xpose  = pc.value("key_matrix_transpose", true);
+            const bool        xpose  = pc.value("key_matrix_transpose", false);
             auto result = buildC64Preset(kernal, basic, chr, xpose);
             if (!result.ok) return result;
-            result.message = "[Config] Loaded: " + path + "  (preset: C64)";
+            result.message            = "[Config] Loaded: " + path + "  (preset: C64)";
             result.hasPreset          = true;
+            result.presetType         = "c64";
             result.keyMatrixTranspose = xpose;
             result.cyclesPerFrame     = root.value("cycles_per_frame", 0);
             return result;
@@ -822,6 +770,7 @@ MachineConfigResult Machine::loadConfig(const std::string& path) {
             if (!result.ok) return result;
             result.message        = "[Config] Loaded: " + path + "  (preset: Spectrum 48K)";
             result.hasPreset      = true;
+            result.presetType     = "spectrum48";
             result.cyclesPerFrame = root.value("cycles_per_frame", 0);
             return result;
         }
@@ -832,6 +781,7 @@ MachineConfigResult Machine::loadConfig(const std::string& path) {
             if (!result.ok) return result;
             result.message        = "[Config] Loaded: " + path + "  (preset: Apple IIe)";
             result.hasPreset      = true;
+            result.presetType     = "apple2e";
             result.cyclesPerFrame = root.value("cycles_per_frame", 0);
             return result;
         }

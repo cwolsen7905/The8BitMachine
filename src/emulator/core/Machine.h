@@ -21,6 +21,8 @@
 #include "emulator/cpu/CPUZ80.h"
 #include "emulator/devices/Memory.h"
 
+#include "emulator/core/IKeyMapper.h"
+
 #include <functional>
 #include <memory>
 #include <string>
@@ -39,7 +41,8 @@ struct MachineConfigResult {
     std::string message;
     // Populated on load when a preset was restored; Application should apply these.
     bool        hasPreset          = false;
-    bool        keyMatrixTranspose = true;
+    std::string presetType;        // "c64", "spectrum48", "apple2e", …
+    bool        keyMatrixTranspose = false;
     int         cyclesPerFrame     = 0;  // 0 = not stored in file (use caller's default)
 };
 
@@ -136,7 +139,7 @@ public:
     MachineConfigResult buildC64Preset(const std::string& kernalPath,
                                        const std::string& basicPath,
                                        const std::string& charPath,
-                                       bool keyMatrixTranspose = true);
+                                       bool keyMatrixTranspose = false);
 
     // Dynamic ROM management
     // mountROM loads a file, owns the ROM object, and maps it on the bus.
@@ -219,7 +222,6 @@ private:
     ScreenInfo activeScreen_;
 
     void buildDefaultMap();
-    void installCIA1KeyHandler(bool transpose);
     void installULAKeyHandler();
     void installAppleIIKeyHandler();
 
@@ -241,7 +243,6 @@ private:
     std::vector<IBusDevice*> activeFixedDevices_;
 
     // Keyboard routing — set by each preset builder to route SDL key events
-    // (sym = SDL_Keycode cast to int) to the appropriate hardware chip.
-    std::function<void(int sym, bool pressed)> keyHandler_;
-    std::function<void()>                      clearKeysHandler_;
+    // to the appropriate hardware chip.
+    std::unique_ptr<IKeyMapper> keyMapper_;
 };

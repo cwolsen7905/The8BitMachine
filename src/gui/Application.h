@@ -7,6 +7,9 @@
 #include <unordered_set>
 #include <vector>
 
+#include "emulator/core/IPeripheral.h"
+#include "emulator/devices/Drive1541.h"
+
 // One ROM slot required by a preset (e.g. KERNAL, BASIC, CHAR).
 struct PresetRomEntry {
     std::string key;          // machine-readable id used as JSON key
@@ -81,6 +84,13 @@ private:
     int      cyclesPerFrame_  = 1000;   // ~60 kHz at 60 fps (debug default)
 
     // -----------------------------------------------------------------------
+    // Peripherals — external devices (drives, etc.)
+    // -----------------------------------------------------------------------
+    Drive1541                     drive1541_{ 8 };
+    std::vector<IPeripheral*>     peripherals_;
+    std::unordered_map<IPeripheral*, bool> peripheralPanelVisible_;
+
+    // -----------------------------------------------------------------------
     // Breakpoints
     // -----------------------------------------------------------------------
     std::unordered_set<uint16_t> breakpoints_;
@@ -138,7 +148,7 @@ private:
 
     // When true, col and row are swapped before calling setKey — required for
     // MEGA65 OpenROMs which wire PA=rows/PB=cols (opposite of stock C64 KERNAL).
-    bool keyMatrixTranspose_ = true;
+    bool keyMatrixTranspose_ = false;
 
     // -----------------------------------------------------------------------
     // Disassembler
@@ -223,6 +233,8 @@ private:
     void render();
 
     void drawMenuBar();
+    void drawPeripheralsMenu();
+    void rewirePeripherals(const std::string& presetType);
     void drawScreen();
     void drawTerminal();
     void drawCpuState();

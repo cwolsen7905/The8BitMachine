@@ -110,7 +110,10 @@ set(SOURCES
     src/emulator/devices/C64IOSpace.cpp
     src/emulator/devices/BankSelectPort.cpp
     src/emulator/devices/SwitchableRegion.cpp
+    src/emulator/devices/C64KeyMapper.cpp
     src/emulator/devices/CIA6526.cpp
+    src/emulator/devices/D64Image.cpp
+    src/emulator/devices/Drive1541.cpp
     src/emulator/devices/ULA.cpp
     src/emulator/devices/AppleIIVideo.cpp
     src/emulator/devices/AppleIIIO.cpp

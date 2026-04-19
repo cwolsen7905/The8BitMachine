@@ -2,9 +2,11 @@
 
 #include "emulator/core/IBusDevice.h"
 #include "emulator/core/IHasPanel.h"
+#include "emulator/core/IIECDevice.h"
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 // ---------------------------------------------------------------------------
 // MOS 6526 Complex Interface Adapter  (CIA)
@@ -44,6 +46,24 @@ public:
     // Callback fired when an unmasked interrupt fires.
     std::function<void()> onIRQ;
 
+    // -----------------------------------------------------------------------
+    // IEC serial bus — connect peripherals (e.g. 1541) before running.
+    // CIA2 drives bits 3-5 of Port A onto the bus; all devices participate
+    // in a wired-AND: a line is asserted (low) if any driver pulls it low.
+    // -----------------------------------------------------------------------
+    void connectIEC(IIECDevice* dev) {
+        // Guard against double-registration: preset load and session restore both
+        // call rewirePeripherals(), so this can be reached more than once per run.
+        for (auto* d : iecDevices_) if (d == dev) return;
+        iecDevices_.push_back(dev);
+    }
+    void disconnectAllIEC() { iecDevices_.clear(); }
+
+    // Recompute the wired-AND IEC bus state and feed CLK-in/DATA-in back into
+    // Port A bits 6-7 so the CPU can read them from $DD00.
+    // Call once per clock cycle after clocking all IEC devices.
+    void updateIECInputBits();
+
     // Non-destructive register peeks (for UI display — do NOT use read() for ICR).
     uint16_t timerACounter() const { return timerACounter_; }
     uint16_t timerBCounter() const { return timerBCounter_; }
@@ -57,6 +77,9 @@ public:
     uint8_t  todHr()         const { return todHr_; }
 
     // -----------------------------------------------------------------------
+    // IEC line state driven by this CIA (for debug panels)
+    IECLines iecDriven() const { return iecDriven_; }
+
     // Keyboard matrix — 8 columns × 8 rows, active-low.
     // col = PA bit index (0–7), row = PB bit index (0–7).
     // PRB reads the AND of all selected columns' row bytes.
@@ -168,6 +191,33 @@ private:
 
     // Keyboard matrix — column bytes, active-low (0xFF = no keys pressed)
     uint8_t keyMatrix_[8] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
+
+    // Keyboard scan history for the debug panel
+    uint8_t lastScanPRA_       = 0xFF;  // last PRA written
+    uint8_t lastScanPRB_       = 0xFF;  // PRB computed for that PRA
+    uint8_t lastActivePRA_     = 0xFF;  // last PRA where PRB != 0xFF (key detected)
+    uint8_t lastActivePRB_     = 0xFF;
+
+    // IEC bus
+    std::vector<IIECDevice*> iecDevices_;
+    IECLines                 iecDriven_;       // lines this CIA is currently driving
+    uint8_t                  iecInputBits_ = 0; // PA6=CLK-in, PA7=DATA-in (inverted)
+    bool                     iecBusAtn_   = true; // wired-AND bus state after devices
+    bool                     iecBusClk_   = true;
+    bool                     iecBusData_  = true;
+    bool                     atnCaptureActive_ = false;
+    uint8_t                  atnCaptureShiftReg_ = 0;
+    int                      atnCaptureBitCount_ = 0;
+
+    // IEC diagnostic log (mutable so read() can append)
+    mutable std::vector<std::string> iecLog_;
+    mutable uint8_t                  iecLastReadPRA_ = 0xFF; // suppress repeated identical reads
+    void logIEC(std::string msg) const {
+        iecLog_.push_back(std::move(msg));
+        if (iecLog_.size() > 256) iecLog_.erase(iecLog_.begin());
+    }
+
+    void notifyIEC();
 
     void timerAUnderflow();
     void timerBUnderflow();
