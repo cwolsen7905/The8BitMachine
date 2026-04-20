@@ -108,7 +108,7 @@ private:
     bool prevClk_  = true;
     bool prevAtn_  = true;
 
-    bool clkFellFlag_ = false;
+    bool clkRoseFlag_ = false;
 
     // Transmit queue filled by command processing
     std::vector<uint8_t> txBuf_;

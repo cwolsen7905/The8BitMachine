@@ -132,7 +132,7 @@ void Drive1541::setIECLines(IECLines host) {
 
     hostIn_  = host;
     prevAtn_ = host.atn;
-    if (!host.clk && prevClk_) clkFellFlag_ = true;
+    if (host.clk && !prevClk_) clkRoseFlag_ = true;
     prevClk_ = host.clk;
 
     // Log raw IEC line transitions for correlation with CIA traces.
@@ -219,11 +219,11 @@ void Drive1541::clock() {
         break;
 
     case State::AtnReceiveBit: {
-        if (clkFellFlag_) {
-            clkFellFlag_ = false;
+        if (clkRoseFlag_) {
+            clkRoseFlag_ = false;
             uint8_t bit = data ? 1u : 0u;
             shiftReg_ |= bit << bitCount_;
-            char b[48]; snprintf(b, sizeof(b), "[CLKf] bit%d DATA=%d sr=$%02X", bitCount_, (int)data, shiftReg_);
+            char b[48]; snprintf(b, sizeof(b), "[CLKr] bit%d DATA=%d sr=$%02X", bitCount_, (int)data, shiftReg_);
             logEvent(b);
             ++bitCount_;
             if (bitCount_ == 8) {
@@ -278,8 +278,8 @@ void Drive1541::clock() {
             }
         }
 
-        bool clkFell = (!clk && prevClk_);
-        if (clkFell) {
+        if (clkRoseFlag_) {
+            clkRoseFlag_ = false;
             driven_.data = true; // Ensure DATA is released to read it
             eoiTimer_ = 0;
             shiftReg_ |= (data ? 1u : 0u) << bitCount_;
