@@ -222,7 +222,7 @@ void Drive1541::clock() {
     case State::AtnReceiveBit: {
         if (clkRoseFlag_) {
             clkRoseFlag_ = false;
-            uint8_t bit = data ? 1u : 0u;
+            uint8_t bit = data ? 0u : 1u;  // active-low: DATA HIGH = 0, DATA LOW = 1
             shiftReg_ |= bit << bitCount_;
             char b[48];
             snprintf(b, sizeof(b), "[CLKr] bit%d DATA=%d sr=$%02X", bitCount_, (int)data, shiftReg_);
@@ -285,7 +285,7 @@ void Drive1541::clock() {
             clkRoseFlag_ = false;
             driven_.data = true; // Ensure DATA is released to read it
             eoiTimer_ = 0;
-            shiftReg_ |= (data ? 1u : 0u) << bitCount_;
+            shiftReg_ |= (data ? 0u : 1u) << bitCount_;  // active-low: DATA LOW = bit 1
             ++bitCount_;
             if (bitCount_ == 8) {
                 driven_.data = false;  // pull DATA low = byte acknowledged
