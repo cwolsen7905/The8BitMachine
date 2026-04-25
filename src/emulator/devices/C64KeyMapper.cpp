@@ -7,8 +7,8 @@
 //        col0  col1   col2    col3   col4    col5   col6   col7
 // row0:  DEL   RET  CUR-RT    F7     F1      F3     F5   CUR-DN
 // row1:   3     W     A        4      Z       S      E   LSHIFT
-// row2:   5     R     D        6      X       T      F      C
-// row3:   7     Y     G        8      V       H      U      B
+// row2:   5     R     D        6      C       F      T      X
+// row3:   7     Y     G        8      B       H      U      V
 // row4:   9     I     J        0      M       K      O      N
 // row5:   +     P     L        -      .       :      @      ,
 // row6:   £     *     ;      HOME  RSHIFT     =      ↑      /
@@ -64,8 +64,8 @@ void C64StandardKeyMapper::keyEvent(int sdlSym, bool pressed) {
         // --- Column 4 ---
         case SDLK_F1:           col=4; row=0; break;
         case SDLK_z:            col=4; row=1; break;
-        case SDLK_x:            col=4; row=2; break;
-        case SDLK_v:            col=4; row=3; break;
+        case SDLK_c:            col=4; row=2; break;
+        case SDLK_b:            col=4; row=3; break;
         case SDLK_m:            col=4; row=4; break;
         case SDLK_PERIOD:       col=4; row=5; break;
         case SDLK_RSHIFT:       col=4; row=6; break;  // C64 RShift
@@ -74,7 +74,7 @@ void C64StandardKeyMapper::keyEvent(int sdlSym, bool pressed) {
         // --- Column 5 ---
         case SDLK_F3:           col=5; row=0; break;
         case SDLK_s:            col=5; row=1; break;
-        case SDLK_t:            col=5; row=2; break;
+        case SDLK_f:            col=5; row=2; break;
         case SDLK_h:            col=5; row=3; break;
         case SDLK_k:            col=5; row=4; break;
         case SDLK_COLON:        col=5; row=5; break;  // C64 :
@@ -84,7 +84,7 @@ void C64StandardKeyMapper::keyEvent(int sdlSym, bool pressed) {
         // --- Column 6 ---
         case SDLK_F5:           col=6; row=0; break;
         case SDLK_e:            col=6; row=1; break;
-        case SDLK_f:            col=6; row=2; break;
+        case SDLK_t:            col=6; row=2; break;
         case SDLK_u:            col=6; row=3; break;
         case SDLK_o:            col=6; row=4; break;
         case SDLK_q:            col=6; row=7; break;
@@ -92,8 +92,8 @@ void C64StandardKeyMapper::keyEvent(int sdlSym, bool pressed) {
         // --- Column 7 ---
         case SDLK_DOWN:         col=7; row=0; break;  // cursor down
         case SDLK_LSHIFT:       col=7; row=1; break;
-        case SDLK_c:            col=7; row=2; break;
-        case SDLK_b:            col=7; row=3; break;
+        case SDLK_x:            col=7; row=2; break;
+        case SDLK_v:            col=7; row=3; break;
         case SDLK_n:            col=7; row=4; break;
         case SDLK_COMMA:        col=7; row=5; break;
         case SDLK_SLASH:        col=7; row=6; break;

@@ -570,20 +570,21 @@ void CIA6526::drawPanel(const char* title, bool* open) {
             ImGui::TextDisabled("Key hit  (none yet)");
         ImGui::Separator();
 
-        // Column headers
+        // Bit headers (representing rows 0-7)
         ImGui::TextDisabled("    ");
-        for (int col = 0; col < 8; ++col) {
+        for (int row = 0; row < 8; ++row) {
             ImGui::SameLine();
-            bool scanned = !(pra_ & (1 << col));
-            if (scanned)
-                ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f}, " c%d", col);
-            else
-                ImGui::TextDisabled(" c%d", col);
+            ImGui::TextDisabled(" b%d ", row);
         }
 
-        for (int row = 0; row < 8; ++row) {
-            ImGui::TextDisabled("r%d  ", row);
-            for (int col = 0; col < 8; ++col) {
+        // Matrix display (columns as rows)
+        for (int col = 0; col < 8; ++col) {
+            bool scanned = !(pra_ & (1 << col));
+            if (scanned)
+                ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f}, "c%d ", col);
+            else
+                ImGui::TextDisabled("c%d ", col);
+            for (int row = 0; row < 8; ++row) {
                 ImGui::SameLine();
                 bool pressed = !(keyMatrix_[col] & (1 << row));
                 if (pressed)

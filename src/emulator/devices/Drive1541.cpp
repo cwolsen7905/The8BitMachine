@@ -212,6 +212,7 @@ void Drive1541::clock() {
     case State::AtnWaitClkHigh:
         if (clk) {
             driven_.data = true; // release DATA, ready to receive
+            clkRoseFlag_ = false; // discard the "ready" CLK rise; next rise carries bit0
             state_ = State::AtnReceiveBit;
             bitCount_ = 0;
             shiftReg_ = 0;
@@ -223,7 +224,8 @@ void Drive1541::clock() {
             clkRoseFlag_ = false;
             uint8_t bit = data ? 1u : 0u;
             shiftReg_ |= bit << bitCount_;
-            char b[48]; snprintf(b, sizeof(b), "[CLKr] bit%d DATA=%d sr=$%02X", bitCount_, (int)data, shiftReg_);
+            char b[48];
+            snprintf(b, sizeof(b), "[CLKr] bit%d DATA=%d sr=$%02X", bitCount_, (int)data, shiftReg_);
             logEvent(b);
             ++bitCount_;
             if (bitCount_ == 8) {
@@ -248,6 +250,7 @@ void Drive1541::clock() {
     case State::ListenWaitClkHigh:
         if (clk) {
             driven_.data = true;   // release DATA (HIGH) = ready to receive
+            clkRoseFlag_ = false; // discard "ready" CLK rise; next rise carries bit0
             state_    = State::ListenReceiveBit;
             bitCount_ = 0;
             shiftReg_ = 0;
@@ -485,6 +488,14 @@ void Drive1541::openChannel(int ch, const std::string& name) {
     channels_[ch].data = std::move(data);
     channels_[ch].pos  = 0;
     channels_[ch].open = true;
+
+    // LOAD"*",8,1 OPENs ch0 then TALKs ch1. Mirror so ch1 serves the same data.
+    if (ch == 0 && normalized == "*") {
+        channels_[1].data = channels_[0].data;
+        channels_[1].pos  = 0;
+        channels_[1].open = true;
+        logEvent("Mirrored ch0 -> ch1 for LOAD,1");
+    }
 }
 
 // ---------------------------------------------------------------------------
