@@ -29,6 +29,7 @@ Releases are tagged on the `main` branch; active development happens on `dev`.
 - **`keyMatrixTranspose` default changed to `false`** — Standard KERNAL is now the default; MEGA65 OpenROMs remain selectable via the radio button in the C64 preset dialog; preset JSON `key_matrix_transpose` field defaults to `false`
 - **Peripheral registry not restored on session reload** — `loadConfig()` now calls `rewirePeripherals()` so drives and CIA2 IEC connections are re-established after restarting with a saved C64 session
 - **CIA6526 keyboard matrix debugger panel formatting** — Matrix display now shows columns (c0–c7) on the left axis and bit positions (b0–b7) on the top axis with proper alignment; previously the transposed storage layout made key positions appear inverted on-screen
+- **CIA2 PA6/PA7 inverter** — CLK-in and DATA-in bits fed back to `$DD00` are now inverted to match the real C64 7406 open-collector inverter hardware; bus line LOW (device asserted) now reads as PA bit = 1, so the KERNAL correctly detects the drive ATN acknowledge and no longer returns "device not present" (error 74)
 
 ---
 

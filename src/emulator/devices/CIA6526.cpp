@@ -476,13 +476,12 @@ void CIA6526::updateIECInputBits() {
     }
 
     // Feed bus state back as PA6 (CLK-in) and PA7 (DATA-in).
-    // The C64 hardware does NOT use inverters on these inputs.
-    // They are connected directly to the bus:
-    //   line LOW (asserted, false) → PA bit = 0
-    //   line HIGH (released, true) → PA bit = 1
+    // The C64 hardware uses 7406 open-collector inverters on these inputs:
+    //   bus line LOW (asserted) → inverter output HIGH → PA bit = 1
+    //   bus line HIGH (released) → inverter output LOW → PA bit = 0
     iecInputBits_ = 0;
-    if (busClk)  iecInputBits_ |= 0x40;  // PA6
-    if (busData) iecInputBits_ |= 0x80;  // PA7
+    if (!busClk)  iecInputBits_ |= 0x40;  // PA6: bus CLK LOW → PA6=1
+    if (!busData) iecInputBits_ |= 0x80;  // PA7: bus DATA LOW → PA7=1
 }
 
 void CIA6526::drawPanel(const char* title, bool* open) {
