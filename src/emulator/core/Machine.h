@@ -115,6 +115,7 @@ public:
     // -----------------------------------------------------------------------
     void setCharOutCallback(std::function<void(uint8_t)> cb);
     void setIRQCallback(std::function<void()> cb);
+    void setNMICallback(std::function<void()> cb);
 
     // -----------------------------------------------------------------------
     // Config

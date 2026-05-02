@@ -542,6 +542,10 @@ void Machine::setIRQCallback(std::function<void()> cb) {
     vic_.onIRQ  = std::move(cb);
 }
 
+void Machine::setNMICallback(std::function<void()> cb) {
+    cia2_.onIRQ = std::move(cb);
+}
+
 // ---------------------------------------------------------------------------
 // Config helpers
 // ---------------------------------------------------------------------------

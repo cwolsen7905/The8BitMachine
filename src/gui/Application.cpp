@@ -164,6 +164,7 @@ bool Application::init() {
     });
 
     machine_.setIRQCallback([this]() { machine_.cpu().irq(); });
+    machine_.setNMICallback([this]() { machine_.cpu().nmi(); });
 
     // --- SDL audio: mono float32 at 44100 Hz, 512-sample callback ---
     SDL_AudioSpec want{};

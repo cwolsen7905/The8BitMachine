@@ -19,18 +19,30 @@ Releases are tagged on the `main` branch; active development happens on `dev`.
 - **Peripherals menu** — "Peripherals" menu in the menu bar lists all wired peripherals for the active preset; each entry has a submenu with "Mount image…" (native file browser) and "Eject" actions; drive panel opened via "Show Panel"; present only when peripherals are registered
 - **`rewirePeripherals(presetType)`** — extracted helper that registers peripherals and connects CIA2 IEC for the given preset; called after both UI-driven preset loads and session restores so the drive is always wired after a restart
 - **`MachineConfigResult::presetType`** — `loadConfig()` now populates this field so session restore knows which preset type to rewire
+- **`Machine::setNMICallback()`** — CIA2 `onIRQ` is now wired to the CPU NMI line via `Application::init()`; previously CIA2 interrupts had no path to the CPU
 
 ### Fixed
-- **Drive1541 IEC ATN acknowledge timing** — the drive previously asserted DATA synchronously on ATN falling edge, causing the KERNAL to detect a "device not present" error (~30 cycles later at `$ED44`) and abort before sending any command bytes; DATA is now held released at ATN fall and asserted only after the host releases CLK ("ready to send"), matching the real 1541 asynchronous NMI-driven response
+- **Drive1541 IEC ATN acknowledge timing** — the drive previously asserted DATA synchronously on ATN falling edge, causing the KERNAL to detect a "device not present" error (~30 cycles later at `$ED44`) and abort before sending any command bytes; DATA is now held low through the ATN sequence and released only once the host signals ready-to-send
+- **Drive1541 ATN sequencing** — added `AtnWaitClkLow` intermediate state; the drive now waits for CLK to be asserted before watching for a rising edge, preventing a stale CLK-high from triggering `AtnWaitClkHigh` prematurely
+- **Drive1541 `SA_CLOSE` constant** — was `0xE0`, corrected to `0x70`; close-channel commands were never decoded
+- **Drive1541 IEC DATA bit polarity** — `AtnReceiveBit` and `ListenReceiveBit` were sampling with inverted polarity; corrected to DATA HIGH = bit 1, DATA LOW = bit 0 in both receive and transmit paths
+- **Drive1541 EOI detection** — listener now detects EOI by CLK staying HIGH for ≥ 200 cycles (talker hold time per IEC spec) rather than by DATA state; acknowledge pulse and release sequence revised to match ACPTR timing at `$ED55–$ED5D`
+- **Drive1541 talker state machine** — `TalkStart` now drives CLK LOW to signal the drive has taken the talker role (exits the TKSA BMI spin-loop); `TalkEOI` holds CLK HIGH so ACPTR Timer B can detect the long hold; `TalkNormalReady`, `TalkSendBit`, `TalkHoldBit`, and `TalkBitSettle` separated into individual states with correct per-phase CLK/DATA transitions; removed `talkClkHigh_` phase flag
+- **Drive1541 channel mirroring** — ch0 and ch1 are now mirrored for any channel name opened on either; previously only `"*"` opened on ch0 was mirrored, missing `LOAD"*",8,1` variants that open via secondary address 1
 - **D64 directory block count** — file size in the directory entry was read from bytes 28–29 (`$1C–$1D`) instead of the correct 30–31 (`$1E–$1F`), showing wrong block counts in the drive panel
 - **CIA2 IEC line polarity** — output bit 1 (written to PA3–PA5) drives the bus line LOW (open-collector); previously the polarity was inverted, causing the KERNAL to see asserted lines as released and vice-versa
 - **CIA2 PA6/PA7 IEC readback** — `read($DD00)` now merges `iecInputBits_` (CLK-in / DATA-in from the wired-AND bus) with `pra_` output bits; previously always returned `pra_`, so the KERNAL could never see CLK or DATA from the drive
+- **CIA2 PA6/PA7 input polarity** — PA6 and PA7 reflect the wired-AND bus state directly (bus CLK HIGH → PA6 = 1, bus DATA HIGH → PA7 = 1); an earlier pass had applied a 7406 inverter model to these inputs which was incorrect for this signal path
+- **CIA2 ATN bus line recompute** — `updateIECInputBits()` previously read ATN from `iecDriven_.atn` (a stale snapshot of CIA's own output) rather than recomputing via `lineOut(3)`; now consistent with CLK and DATA computation
+- **CIA6526 TOD halt/resume** — writing `TOD_HR` now halts the TOD clock; writing `TOD_10THS` restarts it; matches real 6526 behaviour that allows software to set the time atomically across the four registers
 - **C64 `*` and `@` key mapping** — `SDLK_RIGHTBRACKET` (`]`) now maps to C64 `*`; `SDLK_LEFTBRACKET` (`[`) maps to C64 `@`; previously `*` was only reachable via the numpad multiply key, unavailable on most laptops
 - **`keyMatrixTranspose` default changed to `false`** — Standard KERNAL is now the default; MEGA65 OpenROMs remain selectable via the radio button in the C64 preset dialog; preset JSON `key_matrix_transpose` field defaults to `false`
 - **Peripheral registry not restored on session reload** — `loadConfig()` now calls `rewirePeripherals()` so drives and CIA2 IEC connections are re-established after restarting with a saved C64 session
 - **CIA6526 keyboard matrix debugger panel formatting** — Matrix display now shows columns (c0–c7) on the left axis and bit positions (b0–b7) on the top axis with proper alignment; previously the transposed storage layout made key positions appear inverted on-screen
-- **CIA2 PA6/PA7 inverter** — CLK-in and DATA-in bits fed back to `$DD00` are now inverted to match the real C64 7406 open-collector inverter hardware; bus line LOW (device asserted) now reads as PA bit = 1, so the KERNAL correctly detects the drive ATN acknowledge and no longer returns "device not present" (error 74)
-- **Drive1541 IEC DATA polarity** — CBM serial bus uses active-low DATA encoding (DATA LOW = bit 1, DATA HIGH = bit 0); `AtnReceiveBit` and `ListenReceiveBit` were sampling with the wrong polarity, so LISTEN/TALK/OPEN command bytes were received inverted and never recognized; fixed in both ATN and LISTEN receive paths
+
+### Changed
+- **Drive1541 IEC event log** — buffer expanded from 64 to 512 entries; line-state transitions during bit-transfer states are suppressed (except ATN changes) to reduce noise during a load
+- **`.gitignore`** — `research/` directory added
 
 ---
 

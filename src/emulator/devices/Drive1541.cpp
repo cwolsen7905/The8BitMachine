@@ -21,14 +21,11 @@ static std::string normalizeFileName(std::string name) {
 // CBM serial secondary-address command nibbles (upper nibble of SA byte)
 // ---------------------------------------------------------------------------
 static constexpr uint8_t SA_DATA  = 0x60;  // 0x60–0x6F: data channel
-static constexpr uint8_t SA_CLOSE = 0xE0;  // 0xE0–0xEF: close channel
+static constexpr uint8_t SA_CLOSE = 0x70;  // 0x70–0x7F: close channel
 static constexpr uint8_t SA_OPEN  = 0xF0;  // 0xF0–0xFF: open channel
 
-// Bit timing in C64 clock cycles (~1 MHz).
-// Generous multiples of the real 1541 spec for reliability.
-static constexpr int kBitHalfPeriod = 50;   // cycles per CLK half-period when talking
-static constexpr int kByteGap       = 100;  // cycles between bytes when talking
-static constexpr int kEOIHold       = 250;  // CLK HIGH hold before last byte (>200µs)
+// CLK hold time (cycles) before releasing for non-EOI byte.  Must be <200µs.
+static constexpr int kNormalReadyCycles = 50;
 
 // ---------------------------------------------------------------------------
 // Construction
@@ -135,45 +132,51 @@ void Drive1541::setIECLines(IECLines host) {
     if (host.clk && !prevClk_) clkRoseFlag_ = true;
     prevClk_ = host.clk;
 
-    // Log raw IEC line transitions for correlation with CIA traces.
+    // Log raw IEC line transitions — suppress during bit-transfer states to avoid flooding.
     if (host.atn != prevHost.atn || host.clk != prevHost.clk || host.data != prevHost.data) {
-        char buf[96];
-        snprintf(buf, sizeof(buf),
-            "IEC lines %d%d%d -> %d%d%d  state=%d",
-            prevHost.atn ? 1 : 0, prevHost.clk ? 1 : 0, prevHost.data ? 1 : 0,
-            host.atn ? 1 : 0, host.clk ? 1 : 0, host.data ? 1 : 0,
-            (int)state_);
-        logEvent(buf);
+        bool isBitTransfer = (state_ == State::TalkSendBit   ||
+                              state_ == State::TalkHoldBit   ||
+                              state_ == State::TalkBitSettle ||
+                              state_ == State::TalkNormalReady ||
+                              state_ == State::TalkWaitClkHigh ||
+                              state_ == State::TalkWaitHostDataHigh ||
+                              state_ == State::AtnReceiveBit ||
+                              state_ == State::ListenReceiveBit ||
+                              state_ == State::ListenBitSettle);
+        if (!isBitTransfer || host.atn != prevHost.atn) {
+            char buf[96];
+            snprintf(buf, sizeof(buf),
+                "IEC lines %d%d%d -> %d%d%d  state=%d",
+                prevHost.atn ? 1 : 0, prevHost.clk ? 1 : 0, prevHost.data ? 1 : 0,
+                host.atn ? 1 : 0, host.clk ? 1 : 0, host.data ? 1 : 0,
+                (int)state_);
+            logEvent(buf);
+        }
     }
 
-    // EOI acknowledge: C64 briefly pulls DATA low while we hold CLK high.
-    // Clear waitCycles_ so clock() immediately runs TalkEOI Phase 2.
-    if (state_ == State::TalkEOI && talkClkHigh_ && !host.data && prevHost.data)
-        waitCycles_ = 0;
-
     if (atnFell) {
-        state_ = State::AtnWaitClkHigh;
+        state_ = State::AtnWaitClkLow;
         bitCount_ = 0;
         shiftReg_ = 0;
-        driven_.data = false; // Acknowledge ATN
+        clkRoseFlag_ = false; // discard any CLK rise that occurred before ATN fell
+        driven_.data = false; // Acknowledge ATN (hold DATA low)
         logEvent("ATN fell → DATA asserted");
     }
 
     if (atnRose) {
-        driven_.data = true;  // release DATA
         logEvent("ATN rose → listen=" + std::to_string(listening_) +
                  " talk=" + std::to_string(talking_) + " ch=" + std::to_string(channel_) +
                  " bits=" + std::to_string(bitCount_) + " sr=$" +
                  [&]{ char b[4]; snprintf(b,4,"%02X",shiftReg_); return std::string(b); }());
 
         if (talking_) {
+            driven_.data = true;  // release DATA so bus is free for talker role
             if (channel_ >= 0 && channel_ < 16 && channels_[channel_].open) {
                 auto& c = channels_[channel_];
-                txBuf_       = std::vector<uint8_t>(c.data.begin() + c.pos, c.data.end());
-                txPos_       = 0;
-                bitCount_    = 0;
-                talkClkHigh_ = false;
-                state_       = State::TalkStart;
+                txBuf_    = std::vector<uint8_t>(c.data.begin() + c.pos, c.data.end());
+                txPos_    = 0;
+                bitCount_ = 0;
+                state_    = State::TalkStart;
                 logEvent("TalkStart " + std::to_string(txBuf_.size()) + " bytes");
             } else {
                 logEvent("Talk: ch " + std::to_string(channel_) + " not open → Idle");
@@ -181,8 +184,13 @@ void Drive1541::setIECLines(IECLines host) {
                 state_   = State::Idle;
             }
         } else if (listening_) {
+            // Keep DATA LOW — the KERNAL verifies device presence by releasing DATA and
+            // checking the bus still reads LOW (i.e., the device is holding it).
+            // ListenWaitClkHigh will release DATA once CLK goes HIGH (talker's ready signal).
+            logEvent("→ ListenWaitClkHigh ch=" + std::to_string(channel_));
             state_ = State::ListenWaitClkHigh;
         } else {
+            driven_.data = true;  // not addressed — release lines, go idle
             state_ = State::Idle;
         }
     }
@@ -207,12 +215,21 @@ void Drive1541::clock() {
 
     // ------------------------------------------------------------------
     // ATN command bytes — host is talker, we listen and decode.
-    // Bits are valid on CLK falling edge (talker sets DATA then pulses CLK low).
+    // Data is valid on CLK rising edge: talker sets DATA, pulses CLK low, releases CLK.
     // ------------------------------------------------------------------
+    case State::AtnWaitClkLow:
+        // Hold DATA low (ATN ack). KERNAL may assert ATN before asserting CLK;
+        // wait here until CLK goes low so we don't release DATA on a stale CLK-high.
+        if (!clk) state_ = State::AtnWaitClkHigh;
+        break;
+
     case State::AtnWaitClkHigh:
-        if (clk) {
-            driven_.data = true; // release DATA, ready to receive
-            clkRoseFlag_ = false; // discard the "ready" CLK rise; next rise carries bit0
+        // Wait for a NEW CLK rising edge (clkRoseFlag_), not just "CLK is currently high".
+        // Using clk directly would fire on the bit7 sample CLK that's still high while we
+        // transition through AtnBitSettle — causing a premature return to AtnReceiveBit.
+        if (clkRoseFlag_) {
+            clkRoseFlag_ = false; // discard this rise — it's the "ready" signal, not bit0
+            driven_.data = true;  // release DATA, ready to receive
             state_ = State::AtnReceiveBit;
             bitCount_ = 0;
             shiftReg_ = 0;
@@ -222,7 +239,7 @@ void Drive1541::clock() {
     case State::AtnReceiveBit: {
         if (clkRoseFlag_) {
             clkRoseFlag_ = false;
-            uint8_t bit = data ? 0u : 1u;  // active-low: DATA HIGH = 0, DATA LOW = 1
+            uint8_t bit = data ? 1u : 0u;  // DATA HIGH = bit 1, DATA LOW = bit 0
             shiftReg_ |= bit << bitCount_;
             char b[48];
             snprintf(b, sizeof(b), "[CLKr] bit%d DATA=%d sr=$%02X", bitCount_, (int)data, shiftReg_);
@@ -248,9 +265,10 @@ void Drive1541::clock() {
     // Listener — receive data bytes from host after ATN is released.
     // ------------------------------------------------------------------
     case State::ListenWaitClkHigh:
-        if (clk) {
-            driven_.data = true;   // release DATA (HIGH) = ready to receive
-            clkRoseFlag_ = false; // discard "ready" CLK rise; next rise carries bit0
+        // Same edge-detection rationale as AtnWaitClkHigh: require a new rising edge.
+        if (clkRoseFlag_) {
+            clkRoseFlag_ = false; // discard this "ready" CLK rise; next rise carries bit0
+            driven_.data = true;  // release DATA (HIGH) = ready to receive
             state_    = State::ListenReceiveBit;
             bitCount_ = 0;
             shiftReg_ = 0;
@@ -259,33 +277,36 @@ void Drive1541::clock() {
         break;
 
     case State::ListenReceiveBit: {
-        // EOI Detection: Host pulls DATA low while CLK is high.
-        if (clk && !data) {
+        // EOI detection: the talker holds CLK HIGH for >200 cycles before sending the
+        // last byte.  DATA state is irrelevant — the trigger is CLK staying high.
+        if (clk) {
             if (eoiTimer_ < 255) eoiTimer_++;
-            // If DATA held low for ~200us, acknowledge EOI by pulling DATA low.
-            if (eoiTimer_ >= 200) {
-                driven_.data = false;
+            if (eoiTimer_ == 200) {
+                logEvent("EOI ack (DATA low)");
+                driven_.data = false;  // acknowledge EOI — C64 $ED55-$ED58 detects DATA LOW
+            } else if (eoiTimer_ == 220) {
+                logEvent("EOI ack released");
+                driven_.data = true;   // release DATA HIGH — C64 $ED5A-$ED5D exits, proceeds to send bits
             }
         } else {
-            if (eoiTimer_ >= 200 && !clk) {
-                // Host released DATA and pulled CLK low to send the first bit.
-                // We must release DATA so we can read the bus properly!
+            // CLK went low (talker starting a bit).  If we just acked EOI, release
+            // DATA so the bus is clear for bit sampling.
+            if (eoiTimer_ >= 200) {
                 driven_.data = true;
-                eoiTimer_ = 0;
-            } else if (!clk) {
-                // Just a normal CLK low (bit send)
-                eoiTimer_ = 0;
-            } else {
-                // clk is high, data is high. Not an EOI or aborted EOI.
-                if (eoiTimer_ < 200) eoiTimer_ = 0;
             }
+            eoiTimer_ = 0;
         }
 
         if (clkRoseFlag_) {
             clkRoseFlag_ = false;
             driven_.data = true; // Ensure DATA is released to read it
             eoiTimer_ = 0;
-            shiftReg_ |= (data ? 0u : 1u) << bitCount_;  // active-low: DATA LOW = bit 1
+            shiftReg_ |= (data ? 1u : 0u) << bitCount_;  // DATA HIGH = bit 1, DATA LOW = bit 0
+            {
+                char b[48];
+                snprintf(b, sizeof(b), "[LRx] bit%d DATA=%d sr=$%02X", bitCount_, (int)data, shiftReg_);
+                logEvent(b);
+            }
             ++bitCount_;
             if (bitCount_ == 8) {
                 driven_.data = false;  // pull DATA low = byte acknowledged
@@ -308,13 +329,16 @@ void Drive1541::clock() {
     // Talker — send data bytes to host.
     // ------------------------------------------------------------------
     case State::TalkStart:
-        // When ATN rose, we entered TalkStart. C64 pulls CLK low to hold off drive.
-        driven_.clk = true;
+        // Talker Step 0: drive holds CLK LOW to signal "I am the new talker".
+        // TKSA's BMI loop (which loops while CLK HIGH) exits when it sees CLK LOW.
+        // Stay here until CIA releases its CLK (TKSA will do this after ATN).
+        driven_.clk = false;
         driven_.data = true;
         if (txPos_ >= txBuf_.size()) {
             state_ = State::Idle;
             talking_ = false;
-        } else {
+        } else if (hostIn_.clk) {
+            // CIA released CLK; hand off to TalkWaitClkHigh which drives the byte.
             state_ = State::TalkWaitClkHigh;
         }
         break;
@@ -324,80 +348,98 @@ void Drive1541::clock() {
         driven_.clk = true;
         driven_.data = true;
         if (clk) {
-            // C64 is ready! We pull CLK low to say we are starting the byte.
-            driven_.clk = false;
             shiftReg_ = txBuf_[txPos_];
             bitCount_ = 0;
-            if (txPos_ == txBuf_.size() - 1) {
+            txEOI_ = (txPos_ == txBuf_.size() - 1);
+            if (txEOI_) {
+                // EOI byte: hold CLK HIGH so ACPTR Timer B detects the long CLK-HIGH window.
+                // Pulling CLK LOW here (setup pulse) would make ACPTR's $EE3C BPL branch to
+                // bit-receive before Timer B fires, skipping the EOI ack entirely.
+                talkEoiCycles_ = 0;
+                logEvent("→ TalkEOI: last byte, holding CLK HIGH for Timer B");
                 state_ = State::TalkEOI;
             } else {
-                waitCycles_ = 0;
+                driven_.clk = false;  // CLK LOW setup pulse for normal bytes
+                waitCycles_ = kNormalReadyCycles;
                 state_ = State::TalkNormalReady;
             }
         }
         break;
 
     case State::TalkEOI:
-        // Hold CLK low until C64 times out (255us) and pulls DATA low.
-        driven_.clk = false;
+        // Hold CLK HIGH; ACPTR Timer B fires after ~512 cycles and C64 pulls DATA LOW (EOI ack).
+        // After ack, wait for C64 to release DATA, then send last byte bits normally.
+        driven_.clk = true;
+        driven_.data = true;
+        if (++talkEoiCycles_ % 5000 == 0) {
+            char b[64];
+            snprintf(b, sizeof(b), "TalkEOI: %d cycles data=%d", talkEoiCycles_, (int)data);
+            logEvent(b);
+        }
         if (!data) {
-            // C64 acknowledged EOI!
-            driven_.clk = true; // Release CLK
+            char b[64];
+            snprintf(b, sizeof(b), "EOI ack from C64 after %d cycles", talkEoiCycles_);
+            logEvent(b);
+            talkEoiCycles_ = 0;
+            txEOI_ = false;
+            // Don't pull CLK LOW here — TalkSendBit will do it when it's ready to send bit 0.
             state_ = State::TalkWaitHostDataHigh;
         }
         break;
 
     case State::TalkNormalReady:
-        // Hold CLK low for a short time (<200us) then release.
-        driven_.clk = false;
-        waitCycles_++;
-        if (waitCycles_ >= 50) {
-            driven_.clk = true; // Release CLK
-            state_ = State::TalkWaitHostDataHigh;
-        }
+        // CLK was pulled low in TalkWaitClkHigh and held for kNormalReadyCycles via
+        // the waitCycles_ countdown.  Now release CLK and wait for DATA to go high.
+        driven_.clk = true;
+        state_ = State::TalkWaitHostDataHigh;
         break;
 
     case State::TalkWaitHostDataHigh:
-        // Wait for C64 to release DATA (it does this at EE2A)
+        // Wait for C64 to release DATA.
+        // txEOI_=true  → byte-ACK just cleared; go hold CLK HIGH for EOI detection.
+        // txEOI_=false → EOI ack just cleared (or normal byte); go send bits.
         if (data) {
             waitCycles_ = 0;
-            state_ = State::TalkSendBit;
+            state_ = txEOI_ ? State::TalkEOI : State::TalkSendBit;
         }
         break;
 
     case State::TalkSendBit:
         if (waitCycles_ == 0) {
             driven_.clk = false; // CLK low
-            driven_.data = !((shiftReg_ >> bitCount_) & 1); // active-low data
+            driven_.data = (bool)((shiftReg_ >> bitCount_) & 1); // bit 1 → DATA HIGH, bit 0 → DATA LOW
             waitCycles_ = 20;
             state_ = State::TalkHoldBit;
         }
         break;
 
     case State::TalkHoldBit:
-        if (--waitCycles_ == 0) {
-            driven_.clk = true; // CLK high (C64 samples here)
-            waitCycles_ = 20;
-            state_ = State::TalkBitSettle;
-        }
+        // Countdown already done by early-return; release CLK so C64 samples DATA.
+        driven_.clk = true;
+        waitCycles_ = 20;
+        state_ = State::TalkBitSettle;
         break;
 
     case State::TalkBitSettle:
-        if (--waitCycles_ == 0) {
-            bitCount_++;
-            if (bitCount_ == 8) {
-                txPos_++;
-                driven_.data = true;
-                if (txPos_ < txBuf_.size()) {
-                    state_ = State::TalkWaitClkHigh;
-                } else {
-                    state_ = State::Idle;
-                    talking_ = false;
-                }
-            } else {
-                waitCycles_ = 0;
-                state_ = State::TalkSendBit;
+        // Countdown done; CLK was high for 20 cycles. Advance to next bit.
+        bitCount_++;
+        if (bitCount_ == 8) {
+            txPos_++;
+            driven_.data = true;
+            if (txPos_ % 1000 == 0 || txPos_ >= txBuf_.size() - 2) {
+                char b[48]; snprintf(b, sizeof(b), "TX pos %zu/%zu", txPos_, txBuf_.size());
+                logEvent(b);
             }
+            if (txPos_ < txBuf_.size()) {
+                state_ = State::TalkWaitClkHigh;
+            } else {
+                logEvent("TX complete → Idle");
+                state_ = State::Idle;
+                talking_ = false;
+            }
+        } else {
+            waitCycles_ = 0;
+            state_ = State::TalkSendBit;
         }
         break;
 
@@ -420,6 +462,13 @@ void Drive1541::handleAtnByte(uint8_t byte) {
 
     // UNLISTEN / UNTALK terminators
     if (byte == 0x3F) {  // UNLISTEN
+        {
+            char dbg[64];
+            snprintf(dbg, sizeof(dbg),
+                "UNLISTEN: listen=%d ch=%d rx=%zu",
+                (int)listening_, channel_, rxBuf_.size());
+            logEvent(dbg);
+        }
         if (listening_ && channel_ >= 0 && !rxBuf_.empty()) {
             std::string name(rxBuf_.begin(), rxBuf_.end());
             logEvent("openChannel(" + std::to_string(channel_) + ", \"" + name + "\")");
@@ -462,6 +511,10 @@ void Drive1541::handleAtnByte(uint8_t byte) {
 }
 
 void Drive1541::handleListenByte(uint8_t byte) {
+    char dbg[24];
+    snprintf(dbg, sizeof(dbg), "RX byte $%02X '%c'", byte,
+             (byte >= 0x20 && byte < 0x7F) ? (char)byte : '.');
+    logEvent(dbg);
     rxBuf_.push_back(byte);
 }
 
@@ -470,7 +523,10 @@ void Drive1541::handleListenByte(uint8_t byte) {
 // ---------------------------------------------------------------------------
 
 void Drive1541::openChannel(int ch, const std::string& name) {
-    if (!image_.isLoaded()) return;
+    if (!image_.isLoaded()) {
+        logEvent("openChannel: no image mounted");
+        return;
+    }
     if (ch < 0 || ch >= 16) return;
 
     std::string normalized = normalizeFileName(name);
@@ -478,9 +534,16 @@ void Drive1541::openChannel(int ch, const std::string& name) {
 
     if (normalized == "*") {
         data = image_.firstPRG();
+        if (data.empty())
+            logEvent("openChannel: no PRG file found on disk");
     } else {
-        if (!normalized.empty() && normalized[0] == '$') return;  // directory not yet supported
+        if (!normalized.empty() && normalized[0] == '$') {
+            logEvent("openChannel: directory listing not yet supported");
+            return;
+        }
         data = image_.findPRG(normalized);
+        if (data.empty())
+            logEvent("openChannel: PRG \"" + normalized + "\" not found");
     }
 
     if (data.empty()) return;
@@ -488,13 +551,17 @@ void Drive1541::openChannel(int ch, const std::string& name) {
     channels_[ch].data = std::move(data);
     channels_[ch].pos  = 0;
     channels_[ch].open = true;
+    logEvent("openChannel(" + std::to_string(ch) + ") OK, " +
+             std::to_string(channels_[ch].data.size()) + " bytes");
 
-    // LOAD"*",8,1 OPENs ch0 then TALKs ch1. Mirror so ch1 serves the same data.
-    if (ch == 0 && normalized == "*") {
-        channels_[1].data = channels_[0].data;
-        channels_[1].pos  = 0;
-        channels_[1].open = true;
-        logEvent("Mirrored ch0 -> ch1 for LOAD,1");
+    // Mirror to both ch0 and ch1: KERNAL may open with SA=0 or SA=1 and
+    // talk with the same or the other, depending on the LOAD form used.
+    if (normalized == "*" && (ch == 0 || ch == 1)) {
+        int other = ch ^ 1;
+        channels_[other].data = channels_[ch].data;
+        channels_[other].pos  = 0;
+        channels_[other].open = true;
+        logEvent("Mirrored ch" + std::to_string(ch) + " -> ch" + std::to_string(other));
     }
 }
 
@@ -538,12 +605,13 @@ void Drive1541::drawPanel(const char* title, bool* open) {
     ImGui::Separator();
     static const char* kStateNames[] = {
         "Idle",
-        "ATN Wait CLK High", "ATN Receive Bit", "ATN Bit Settle",
+        "ATN Wait CLK Low", "ATN Wait CLK High", "ATN Receive Bit", "ATN Bit Settle",
         "Listen Wait CLK", "Listen Bit Settle", "Listen Bit", "Listen EOI",
-        "Talk Start", "Talk Bit Out", "Talk EOI", "Talk Turn"
+        "Talk Start", "Talk Wait CLK High", "Talk EOI", "Talk Normal Ready",
+        "Talk Wait Host DATA", "Talk Send Bit", "Talk Hold Bit", "Talk Bit Settle",
     };
     int si = (int)state_;
-    ImGui::Text("IEC state : %s", (si >= 0 && si < 12) ? kStateNames[si] : "?");
+    ImGui::Text("IEC state : %s", (si >= 0 && si < (int)(sizeof(kStateNames)/sizeof(kStateNames[0]))) ? kStateNames[si] : "?");
     ImGui::Text("Listening : %s  Talking : %s  Ch : %d",
         listening_ ? "yes" : "no", talking_ ? "yes" : "no", channel_);
     if (!txBuf_.empty())

@@ -76,7 +76,8 @@ private:
     enum class State {
         Idle,
         // ATN sequence
-        AtnWaitClkHigh,     // pulling DATA low, wait for host to release CLK
+        AtnWaitClkLow,      // ATN just fell; hold DATA low, wait for CLK to be asserted
+        AtnWaitClkHigh,     // CLK now low; wait for host to release CLK (ready-to-send)
         AtnReceiveBit,      // sampling DATA on CLK falling edge
         AtnBitSettle,       // wait one cycle after acknowledging byte
         // Listener (host → drive)
@@ -110,6 +111,8 @@ private:
 
     bool clkRoseFlag_ = false;
 
+    int  talkEoiCycles_ = 0;    // diagnostic counter for time spent in TalkEOI
+
     // Transmit queue filled by command processing
     std::vector<uint8_t> txBuf_;
     size_t               txPos_ = 0;
@@ -130,14 +133,13 @@ private:
     // Timing counters (in clock cycles)
     int  waitCycles_ = 0;
     int  eoiTimer_   = 0;
-    bool talkClkHigh_= false;  // phase flag for TalkBitOut CLK pulse
 
     // Event log for debug panel
     struct LogEntry { std::string msg; };
     std::vector<LogEntry> log_;
     void logEvent(std::string msg) {
         log_.push_back({std::move(msg)});
-        if (log_.size() > 64) log_.erase(log_.begin());
+        if (log_.size() > 512) log_.erase(log_.begin());
     }
 
     // -----------------------------------------------------------------------
@@ -146,7 +148,6 @@ private:
     void handleAtnByte(uint8_t byte);
     void handleListenByte(uint8_t byte);
     void openChannel(int ch, const std::string& name);
-    void loadChannelFromDisk(int ch);
 
     // Set all driven lines to released (high)
     void releaseAll() { driven_ = { true, true, true }; }

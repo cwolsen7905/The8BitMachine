@@ -178,9 +178,11 @@ private:
     uint8_t  todLatchHr_  = 0x01;
     bool     todLatched_  = false;
 
-    // TOD advancement: accumulates clock() calls; advances tenths every ~100 000 cycles
+    // TOD advancement: accumulates clock() calls; advances tenths every ~100 000 cycles.
+    // Writing TOD_HR halts the clock until TOD_10THS is written (real 6526 behaviour).
     uint32_t todCycleAcc_    = 0;
     uint32_t todCyclePeriod_ = 100000;  // ~1 MHz / 10 Hz
+    bool     todRunning_     = true;
 
     // Serial data register stub
     uint8_t sdr_ = 0x00;

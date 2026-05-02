@@ -47,6 +47,7 @@ void CIA6526::reset() {
     todLatched_  = false;
 
     todCycleAcc_ = 0;
+    todRunning_  = true;
 
     sdr_      = 0x00;
     icrMask_  = 0x00;
@@ -79,7 +80,7 @@ void CIA6526::clock() {
     }
 
     // --- TOD advancement ---
-    if (++todCycleAcc_ >= todCyclePeriod_) {
+    if (todRunning_ && ++todCycleAcc_ >= todCyclePeriod_) {
         todCycleAcc_ = 0;
         tickTOD();
     }
@@ -297,10 +298,16 @@ void CIA6526::write(uint16_t offset, uint8_t value) {
                 timerBCounter_ = timerBLatch_;
             break;
 
-        // TOD writes: CRB bit 7 = 1 → write alarm; bit 7 = 0 → write time
+        // TOD writes: CRB bit 7 = 1 → write alarm; bit 7 = 0 → write time.
+        // Writing TOD_HR stops the clock; writing TOD_10THS restarts it.
+        // This matches real 6526 behaviour and lets software set the time atomically.
         case REG_TOD_10:
-            if (crb_ & CRB_ALARM) todAlarm10_  = value & 0x0F;
-            else                  tod10_        = value & 0x0F;
+            if (crb_ & CRB_ALARM) {
+                todAlarm10_ = value & 0x0F;
+            } else {
+                tod10_      = value & 0x0F;
+                todRunning_ = true;   // resume clock after full time write
+            }
             break;
         case REG_TOD_SEC:
             if (crb_ & CRB_ALARM) todAlarmSec_ = value & TOD_HR_MASK;
@@ -311,8 +318,12 @@ void CIA6526::write(uint16_t offset, uint8_t value) {
             else                  todMin_       = value & TOD_HR_MASK;
             break;
         case REG_TOD_HR:
-            if (crb_ & CRB_ALARM) todAlarmHr_  = value & TOD_HR_WRITE_MASK;
-            else                  todHr_        = value & TOD_HR_WRITE_MASK;
+            if (crb_ & CRB_ALARM) {
+                todAlarmHr_ = value & TOD_HR_WRITE_MASK;
+            } else {
+                todHr_      = value & TOD_HR_WRITE_MASK;
+                todRunning_ = false;  // halt clock until TOD_10THS written
+            }
             break;
 
         case REG_SDR: sdr_ = value; break;
@@ -416,7 +427,7 @@ void CIA6526::updateIECInputBits() {
         if (!(ddra_ & (1 << bit))) return true;  // input → not driving → released
         return !(pra_ & (1 << bit));             // output: pra_=1 asserts (low=false)
     };
-    bool busAtn  = iecDriven_.atn;  // PA3: ATN
+    bool busAtn  = lineOut(3);      // PA3: ATN  (recompute like CLK/DATA — avoids double-AND)
     bool busClk  = lineOut(4);      // PA4: CLK
     bool busData = lineOut(5);      // PA5: DATA
 
@@ -476,12 +487,11 @@ void CIA6526::updateIECInputBits() {
     }
 
     // Feed bus state back as PA6 (CLK-in) and PA7 (DATA-in).
-    // The C64 hardware uses 7406 open-collector inverters on these inputs:
-    //   bus line LOW (asserted) → inverter output HIGH → PA bit = 1
-    //   bus line HIGH (released) → inverter output LOW → PA bit = 0
+    // IEC spec: PA6 and PA7 are read *directly* by the C64 — no inverter on the
+    // input path.  PA6 = 1 when bus CLK is HIGH (released); PA7 = 1 when DATA HIGH.
     iecInputBits_ = 0;
-    if (!busClk)  iecInputBits_ |= 0x40;  // PA6: bus CLK LOW → PA6=1
-    if (!busData) iecInputBits_ |= 0x80;  // PA7: bus DATA LOW → PA7=1
+    if (busClk)  iecInputBits_ |= 0x40;   // PA6: bus CLK HIGH → PA6=1
+    if (busData) iecInputBits_ |= 0x80;   // PA7: bus DATA HIGH → PA7=1
 }
 
 void CIA6526::drawPanel(const char* title, bool* open) {
