@@ -28,16 +28,19 @@ namespace {
             {
                 { 0x0314, "IRQ-Vec" },
                 { 0x0316, "NMI-Vec" },
+                { 0x0330, "LOAD-Vec"},
                 { 0xFF81, "CINT"    },
                 { 0xFF84, "IOINIT"  },
                 { 0xFF87, "RAMTAS"  },
                 { 0xFF8A, "RESTOR"  },
                 { 0xFF8D, "VECTOR"  },
                 { 0xFFD2, "CHROUT"  },
+                { 0xFFD5, "LOAD"    },
                 { 0xFFE4, "GETIN"   },
                 { 0xFFFA, "NMI"     },
                 { 0xFFFC, "RESET"   },
                 { 0xFFFE, "IRQ"     },
+                { 0xF533, "ILOAD"   },
             }
         },
         {

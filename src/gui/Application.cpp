@@ -892,7 +892,13 @@ void Application::drawPeripheralsMenu() {
         if (ImGui::BeginMenu("  Image")) {
             if (!p->mountedImage().empty()) {
                 ImGui::TextDisabled("%s", p->mountedImage().c_str());
-                if (ImGui::MenuItem("Eject")) p->eject();
+                if (ImGui::MenuItem("Eject")) {
+                    p->eject();
+                    if (dynamic_cast<Drive1541*>(p)) {
+                        machine_.disableWarpLoad();
+                        machine_.warpLoadTrap().onActivate_ = nullptr;
+                    }
+                }
             } else {
                 ImGui::TextDisabled("(no image)");
             }
@@ -907,23 +913,55 @@ void Application::drawPeripheralsMenu() {
                     }
                 }
             } else {
+                auto mountDrive = [&](const std::string& path) {
+                    if (!p->mount(path)) {
+                        termPrint("[Drive] Mount failed: " + p->mountError());
+                        return;
+                    }
+                    termPrint("[Drive] Mounted: " + path);
+                    if (dynamic_cast<Drive1541*>(p)) {
+                        machine_.warpLoadTrap().onActivate_ = [this]() {
+                            Memory& ram = machine_.ram();
+                            uint8_t fnLen = ram.read(0x00B7);
+                            uint16_t fnPtr = ram.read(0x00BB) |
+                                             (uint16_t(ram.read(0x00BC)) << 8);
+                            // Convert PETSCII filename to ASCII (same mapping as D64/T64)
+                            std::string name;
+                            for (int i = 0; i < fnLen; ++i) {
+                                uint8_t c = ram.read(fnPtr + i);
+                                if (c >= 0x41 && c <= 0x5A) c = c - 0x41 + 'a';
+                                else if (c >= 0x61 && c <= 0x7A) c = c - 0x61 + 'A';
+                                name += static_cast<char>(c);
+                            }
+                            auto data = drive1541_.loadFile(name);
+                            if (data.size() < 3) {
+                                ram.write(0x0090, 0x04);  // STATUS = file not found
+                                return;
+                            }
+                            uint16_t loadAddr = data[0] | (uint16_t(data[1]) << 8);
+                            for (size_t i = 2; i < data.size(); ++i)
+                                ram.write(loadAddr + static_cast<uint16_t>(i - 2), data[i]);
+                            uint16_t endAddr = loadAddr + static_cast<uint16_t>(data.size() - 2);
+                            ram.write(0x0090, 0x00);
+                            ram.write(0x00AC, loadAddr & 0xFF);
+                            ram.write(0x00AD, loadAddr >> 8);
+                            ram.write(0x00AE, endAddr & 0xFF);
+                            ram.write(0x00AF, endAddr >> 8);
+                            termPrint(std::string("[Warp] Loaded \"") + name +
+                                      "\" at $" + [](uint16_t a){
+                                          char buf[5]; snprintf(buf, 5, "%04X", a); return std::string(buf);
+                                      }(loadAddr));
+                        };
+                        machine_.enableWarpLoad();
+                    }
+                };
                 if (ImGui::MenuItem("Mount .d64...")) {
                     std::string path = FileDialog::openFile("D64 disk image\0*.d64\0All files\0*.*\0");
-                    if (!path.empty()) {
-                        if (!p->mount(path))
-                            termPrint("[Drive] Mount failed: " + p->mountError());
-                        else
-                            termPrint("[Drive] Mounted: " + path);
-                    }
+                    if (!path.empty()) mountDrive(path);
                 }
                 if (ImGui::MenuItem("Mount .t64...")) {
                     std::string path = FileDialog::openFile("T64 tape image\0*.t64\0All files\0*.*\0");
-                    if (!path.empty()) {
-                        if (!p->mount(path))
-                            termPrint("[Drive] Mount failed: " + p->mountError());
-                        else
-                            termPrint("[Drive] Mounted: " + path);
-                    }
+                    if (!path.empty()) mountDrive(path);
                 }
             }
             ImGui::EndMenu();

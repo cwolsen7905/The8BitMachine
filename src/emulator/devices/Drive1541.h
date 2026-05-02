@@ -52,6 +52,10 @@ public:
     // -----------------------------------------------------------------------
     void drawPanel(const char* title, bool* open) override;
 
+    // Returns file data as [lo(loadAddr), hi(loadAddr), data...] for warp load.
+    // name is ASCII (already PETSCII-converted); "*" loads the first PRG.
+    std::vector<uint8_t> loadFile(const std::string& name);
+
     // -----------------------------------------------------------------------
     // Reset IEC state machine without ejecting the disk image.
     // Call whenever the host machine resets (C64 F8 / cold boot).

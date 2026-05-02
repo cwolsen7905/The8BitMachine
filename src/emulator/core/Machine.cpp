@@ -69,6 +69,12 @@ MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
     if (!charRom)
         return { false, "Cannot load char ROM: " + charPath };
 
+    // Warp load trap at KERNAL ILOAD entry ($F533, offset $1533 within $E000 ROM).
+    // Registered BEFORE the $E000-$FFFF SwitchableRegion so it wins on first-match.
+    // When inactive the real ROM byte is returned, making this transparent.
+    warpLoadTrap_.setFallback(kernal->read(0x1533));
+    bus_.addDevice(0xF533, 0xF533, &warpLoadTrap_, "Warp Load Trap $F533");
+
     // --- Three switchable regions — registered on bus BEFORE catch-all RAM ---
     // $A000–$BFFF: option 0=RAM, 1=BASIC ROM
     SwitchableRegion* regionA = mountSwitchableRegion(
@@ -324,7 +330,12 @@ void Machine::clearForPreset() {
     activeFixedDevices_.clear();
     epyxFastLoad_.eject();
     c64IOSpace_.setCartridge(nullptr);
+    warpLoadTrap_.setActive(false);
+    warpLoadTrap_.onActivate_ = nullptr;
 }
+
+void Machine::enableWarpLoad()  { warpLoadTrap_.setActive(true); }
+void Machine::disableWarpLoad() { warpLoadTrap_.setActive(false); }
 
 ROM* Machine::loadROM(const std::string& label, const std::string& filePath) {
     auto rom = std::make_unique<ROM>(label);

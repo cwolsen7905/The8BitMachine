@@ -72,6 +72,20 @@ void Drive1541::eject() {
     reset();
 }
 
+std::vector<uint8_t> Drive1541::loadFile(const std::string& name) {
+    if (t64_.isLoaded()) {
+        if (name == "*" || name.empty()) return t64_.firstPRG();
+        auto data = t64_.findPRG(name);
+        return data.empty() ? t64_.firstPRG() : data;
+    }
+    if (image_.isLoaded()) {
+        if (name == "*" || name.empty()) return image_.firstPRG();
+        auto data = image_.findPRG(name);
+        return data.empty() ? image_.firstPRG() : data;
+    }
+    return {};
+}
+
 void Drive1541::reset() {
     for (auto& ch : channels_) ch = Channel{};
     txBuf_.clear(); txPos_ = 0;
