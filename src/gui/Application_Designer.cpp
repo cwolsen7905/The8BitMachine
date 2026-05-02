@@ -638,21 +638,20 @@ void Application::drawDesignerAddBankController() {
 // ---------------------------------------------------------------------------
 // Keyboard matrix — injected as a collapsible section into the owning device panel
 // ---------------------------------------------------------------------------
-
 void Application::injectC64KeyMatrix(const char* title, bool* open) {
     if (!ImGui::Begin(title, open)) { ImGui::End(); return; }
 
     if (ImGui::CollapsingHeader("Keyboard Matrix")) {
         static const char* kLabel[8][8] = {
-          //  row0      row1    row2    row3    row4    row5    row6    row7
-            {"DEL",    "3",    "5",    "7",    "9",    "+",    "\xC2\xA3", "1"   },
-            {"RETURN", "W",    "R",    "Y",    "I",    "P",    "*",    "\xE2\x86\x90"},
-            {"CUR\xE2\x86\x93", "A", "D", "G", "J", "L",    ";",    "CTRL"},
-            {"F7",     "4",    "6",    "8",    "0",    "-",    "HOME", "2"   },
-            {"F1",     "Z",    "C",    "B",    "M",    ".",    "^",    "SPACE"},
-            {"F3",     "S",    "F",    "H",    "K",    ":",    "=",    "CBM" },
-            {"F5",     "E",    "T",    "U",    "O",    "@",    "\xE2\x86\x91", "Q"},
-            {"CUR\xE2\x86\x92", "LSHF", "X", "V",    "N",    ",",    "/",    "STOP"},
+          //  row0                row1    row2    row3    row4    row5    row6              row7
+            {"DEL",              "3",    "5",    "7",    "9",    "+",    "\xC2\xA3",      "1"   },
+            {"RETURN",           "W",    "R",    "Y",    "I",    "P",    "*",             "\xE2\x86\x90"},
+            {"CUR\xE2\x86\x93", "A",    "D",    "G",    "J",    "L",    ";",             "CTRL"},
+            {"F7",               "4",    "6",    "8",    "0",    "-",    "HOME",          "2"   },
+            {"F1",               "Z",    "C",    "B",    "M",    ".",    "RSHF",          "SPACE"},
+            {"F3",               "S",    "F",    "H",    "K",    ":",    "=",             "CBM" },
+            {"F5",               "E",    "T",    "U",    "O",    "@",    "\xE2\x86\x91", "Q"},
+            {"CUR\xE2\x86\x92", "LSHF", "X",    "V",    "N",    ",",    "/",             "STOP"},
         };
 
         {
@@ -682,7 +681,7 @@ void Application::injectC64KeyMatrix(const char* title, bool* open) {
             ImGui::TextDisabled("Row%d ", row);
             for (int col = 0; col < 8; ++col) {
                 ImGui::SameLine();
-                int kCol = col, kRow = row;
+                int kCol = row, kRow = col;
                 if (keyMatrixTranspose_) std::swap(kCol, kRow);
                 const bool held   = machine_.cia1().keyState(kCol, kRow);
                 const bool isLast = (lastKeyCol_ == col && lastKeyRow_ == row);

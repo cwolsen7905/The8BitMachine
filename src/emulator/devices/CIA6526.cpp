@@ -3,6 +3,7 @@
 #include <cstring>
 #include <sstream>
 #include <iomanip>
+#include <cstdio>
 
 // ---------------------------------------------------------------------------
 // Keyboard matrix
@@ -46,6 +47,7 @@ void CIA6526::reset() {
     todLatched_  = false;
 
     todCycleAcc_ = 0;
+    todRunning_  = true;
 
     sdr_      = 0x00;
     icrMask_  = 0x00;
@@ -78,7 +80,7 @@ void CIA6526::clock() {
     }
 
     // --- TOD advancement ---
-    if (++todCycleAcc_ >= todCyclePeriod_) {
+    if (todRunning_ && ++todCycleAcc_ >= todCyclePeriod_) {
         todCycleAcc_ = 0;
         tickTOD();
     }
@@ -180,8 +182,31 @@ void CIA6526::checkTODAlarm() {
 
 uint8_t CIA6526::read(uint16_t offset) const {
     switch (offset & 0x0F) {
-        case REG_PRA: return pra_;
+        case REG_PRA: {
+            // Poll live IEC lines so tight KERNAL read loops see asynchronous changes
+            const_cast<CIA6526*>(this)->updateIECInputBits();
+
+            uint8_t out = pra_ & ddra_;
+            uint8_t in  = iecInputBits_ & ~ddra_;
+
+            // Removed hack simulating ack when CLK high
+
+            uint8_t val = out | in;
+            if (!iecDevices_.empty() && val != iecLastReadPRA_) {
+                iecLastReadPRA_ = val;
+                char buf[64];
+                snprintf(buf, sizeof(buf),
+                    "R PRA=$%02X  CLK-in=%d DATA-in=%d",
+                    (unsigned)val,
+                    (int)!!(val & 0x40), (int)!!(val & 0x80));
+                logIEC(buf);
+            }
+            return val;
+        }
         case REG_PRB: {
+            // C64 keyboard scan: KERNAL writes one PA bit low to select a column,
+            // then reads PB to find which rows are active (active-low, key=0).
+            // pra_ holds the last value written — bit N=0 means column N is selected.
             uint8_t result = 0xFF;
             for (int col = 0; col < 8; ++col)
                 if (!(pra_ & (1 << col)))
@@ -217,6 +242,8 @@ uint8_t CIA6526::read(uint16_t offset) const {
         case REG_SDR: return sdr_;
 
         case REG_ICR: {
+            // Reading ICR is destructive: returns the current flags then clears them.
+            // The UI panel must use icrFlags_() / icrMask_() accessors, never read().
             uint8_t val = icrFlags_;
             const_cast<CIA6526*>(this)->icrFlags_ = 0x00;
             return val;
@@ -233,9 +260,24 @@ uint8_t CIA6526::read(uint16_t offset) const {
 
 void CIA6526::write(uint16_t offset, uint8_t value) {
     switch (offset & 0x0F) {
-        case REG_PRA:  pra_  = value; break;
+        case REG_PRA:
+            pra_ = value;
+            notifyIEC();
+            {
+                uint8_t prb = 0xFF;
+                for (int col = 0; col < 8; ++col)
+                    if (!(pra_ & (1 << col)))
+                        prb &= keyMatrix_[col];
+                lastScanPRA_ = pra_;
+                lastScanPRB_ = prb;
+                if (prb != 0xFF) { lastActivePRA_ = pra_; lastActivePRB_ = prb; }
+            }
+            break;
         case REG_PRB:  prb_  = value; break;
-        case REG_DDRA: ddra_ = value; break;
+        case REG_DDRA:
+            ddra_ = value;
+            notifyIEC();  // DDRA direction change can release/assert IEC lines
+            break;
         case REG_DDRB: ddrb_ = value; break;
 
         case REG_TALO:
@@ -256,10 +298,16 @@ void CIA6526::write(uint16_t offset, uint8_t value) {
                 timerBCounter_ = timerBLatch_;
             break;
 
-        // TOD writes: CRB bit 7 = 1 → write alarm; bit 7 = 0 → write time
+        // TOD writes: CRB bit 7 = 1 → write alarm; bit 7 = 0 → write time.
+        // Writing TOD_HR stops the clock; writing TOD_10THS restarts it.
+        // This matches real 6526 behaviour and lets software set the time atomically.
         case REG_TOD_10:
-            if (crb_ & CRB_ALARM) todAlarm10_  = value & 0x0F;
-            else                  tod10_        = value & 0x0F;
+            if (crb_ & CRB_ALARM) {
+                todAlarm10_ = value & 0x0F;
+            } else {
+                tod10_      = value & 0x0F;
+                todRunning_ = true;   // resume clock after full time write
+            }
             break;
         case REG_TOD_SEC:
             if (crb_ & CRB_ALARM) todAlarmSec_ = value & TOD_HR_MASK;
@@ -270,8 +318,12 @@ void CIA6526::write(uint16_t offset, uint8_t value) {
             else                  todMin_       = value & TOD_HR_MASK;
             break;
         case REG_TOD_HR:
-            if (crb_ & CRB_ALARM) todAlarmHr_  = value & TOD_HR_WRITE_MASK;
-            else                  todHr_        = value & TOD_HR_WRITE_MASK;
+            if (crb_ & CRB_ALARM) {
+                todAlarmHr_ = value & TOD_HR_WRITE_MASK;
+            } else {
+                todHr_      = value & TOD_HR_WRITE_MASK;
+                todRunning_ = false;  // halt clock until TOD_10THS written
+            }
             break;
 
         case REG_SDR: sdr_ = value; break;
@@ -322,6 +374,125 @@ std::string CIA6526::statusLine() const {
 // ---------------------------------------------------------------------------
 // ImGui panel
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// IEC bus notification
+// ---------------------------------------------------------------------------
+
+void CIA6526::notifyIEC() {
+    if (iecDevices_.empty()) return;
+
+    // CIA2 PA3/4/5 are active-HIGH outputs driving open-collector transistors.
+    // Writing 1 pulls the line LOW (asserted); writing 0 releases (line HIGH via pull-up).
+    // IECLines convention: true = released/HIGH, false = asserted/LOW.
+    auto lineReleased = [&](int bit) -> bool {
+        if (!(ddra_ & (1 << bit))) return true;    // input pin → not driving → released
+        return (pra_ & (1 << bit)) == 0;           // output: bit=0 → line HIGH (released)
+    };
+
+    bool oldAtn = iecDriven_.atn;
+    iecDriven_.atn  = lineReleased(3);
+    iecDriven_.clk  = lineReleased(4);
+    iecDriven_.data = lineReleased(5);
+
+    {
+        char buf[64];
+        snprintf(buf, sizeof(buf),
+            "W PRA=$%02X DDRA=$%02X  ATN=%d CLK=%d DATA=%d",
+            (unsigned)pra_, (unsigned)ddra_,
+            (int)iecDriven_.atn, (int)iecDriven_.clk, (int)iecDriven_.data);
+        logIEC(buf);
+    }
+
+    for (IIECDevice* dev : iecDevices_)
+        dev->setIECLines(iecDriven_);
+
+    if (!iecDevices_.empty()) {
+        auto devLines = iecDevices_[0]->getIECLines();
+        iecDriven_.atn &= devLines.atn;
+        iecDriven_.clk &= devLines.clk;
+        iecDriven_.data &= devLines.data;
+    }
+
+    updateIECInputBits();
+
+}
+
+void CIA6526::updateIECInputBits() {
+    if (iecDevices_.empty()) return;
+
+    // Compute wired-AND bus state: CIA's own output AND all IEC device outputs.
+    // A line is released (true) if DDRA bit is 0 (input) OR PRA bit is 0 (output low = released).
+    auto lineOut = [&](int bit) -> bool {
+        if (!(ddra_ & (1 << bit))) return true;  // input → not driving → released
+        return !(pra_ & (1 << bit));             // output: pra_=1 asserts (low=false)
+    };
+    bool busAtn  = lineOut(3);      // PA3: ATN  (recompute like CLK/DATA — avoids double-AND)
+    bool busClk  = lineOut(4);      // PA4: CLK
+    bool busData = lineOut(5);      // PA5: DATA
+
+    bool prevBusAtn  = iecBusAtn_;
+    bool prevBusClk  = iecBusClk_;
+    bool prevBusData = iecBusData_;
+
+    for (IIECDevice* dev : iecDevices_) {
+        IECLines d = dev->getIECLines();
+        busAtn  = busAtn  && d.atn;
+        busClk  = busClk  && d.clk;
+        busData = busData && d.data;
+    }
+
+    if (prevBusAtn && !busAtn) {
+        atnCaptureActive_ = true;
+        atnCaptureShiftReg_ = 0;
+        atnCaptureBitCount_ = 0;
+        logIEC("ATN command capture start");
+    }
+
+    if (atnCaptureActive_) {
+        bool clkFell = prevBusClk && !busClk;
+        if (clkFell) {
+            uint8_t bit = busData ? 0u : 1u;
+            atnCaptureShiftReg_ |= bit << atnCaptureBitCount_;
+            char buf[64];
+            snprintf(buf, sizeof(buf),
+                "ATN bit %d = %d  sr=$%02X",
+                atnCaptureBitCount_, (int)bit, (unsigned)atnCaptureShiftReg_);
+            logIEC(buf);
+            ++atnCaptureBitCount_;
+        }
+    }
+
+    if (!prevBusAtn && busAtn && atnCaptureActive_) {
+        char buf[64];
+        snprintf(buf, sizeof(buf),
+            "ATN command complete (%d bits) sr=$%02X",
+            atnCaptureBitCount_, (unsigned)atnCaptureShiftReg_);
+        logIEC(buf);
+        if (atnCaptureBitCount_ != 8)
+            logIEC("ATN command aborted before 8 bits");
+        atnCaptureActive_ = false;
+    }
+
+    if (busAtn != iecBusAtn_ || busClk != iecBusClk_ || busData != iecBusData_) {
+        char buf[64];
+        snprintf(buf, sizeof(buf),
+            "BUS ATN=%d CLK=%d DATA=%d  ->  ATN=%d CLK=%d DATA=%d",
+            (int)iecBusAtn_, (int)iecBusClk_, (int)iecBusData_,
+            (int)busAtn, (int)busClk, (int)busData);
+        logIEC(buf);
+        iecBusAtn_  = busAtn;
+        iecBusClk_  = busClk;
+        iecBusData_ = busData;
+    }
+
+    // Feed bus state back as PA6 (CLK-in) and PA7 (DATA-in).
+    // IEC spec: PA6 and PA7 are read *directly* by the C64 — no inverter on the
+    // input path.  PA6 = 1 when bus CLK is HIGH (released); PA7 = 1 when DATA HIGH.
+    iecInputBits_ = 0;
+    if (busClk)  iecInputBits_ |= 0x40;   // PA6: bus CLK HIGH → PA6=1
+    if (busData) iecInputBits_ |= 0x80;   // PA7: bus DATA HIGH → PA7=1
+}
 
 void CIA6526::drawPanel(const char* title, bool* open) {
     ImGui::SetNextWindowSize({ 360.0f, 380.0f }, ImGuiCond_FirstUseEver);
@@ -390,6 +561,66 @@ void CIA6526::drawPanel(const char* title, bool* open) {
         ImGui::Text("PRA $%02X  DDRA $%02X", (unsigned)pra_,  (unsigned)ddra_);
         ImGui::Text("PRB $%02X  DDRB $%02X", (unsigned)prb_,  (unsigned)ddrb_);
         ImGui::Text("SDR $%02X", (unsigned)sdr_);
+    }
+
+    if (ImGui::CollapsingHeader("Keyboard Matrix Debugger")) {
+        // Recompute PRB exactly as the read() path does
+        uint8_t scanPRB = 0xFF;
+        for (int col = 0; col < 8; ++col)
+            if (!(pra_ & (1 << col)))
+                scanPRB &= keyMatrix_[col];
+
+        ImGui::Text("Current  PRA $%02X  ->  PRB $%02X", (unsigned)pra_, (unsigned)scanPRB);
+        ImGui::Text("Last     PRA $%02X  ->  PRB $%02X", (unsigned)lastScanPRA_, (unsigned)lastScanPRB_);
+        if (lastActivePRB_ != 0xFF)
+            ImGui::TextColored({0.2f, 1.0f, 0.3f, 1.0f},
+                "Key hit PRA $%02X  ->  PRB $%02X", (unsigned)lastActivePRA_, (unsigned)lastActivePRB_);
+        else
+            ImGui::TextDisabled("Key hit  (none yet)");
+        ImGui::Separator();
+
+        // Bit headers (representing rows 0-7)
+        ImGui::TextDisabled("    ");
+        for (int row = 0; row < 8; ++row) {
+            ImGui::SameLine();
+            ImGui::TextDisabled(" b%d ", row);
+        }
+
+        // Matrix display (columns as rows)
+        for (int col = 0; col < 8; ++col) {
+            bool scanned = !(pra_ & (1 << col));
+            if (scanned)
+                ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f}, "c%d ", col);
+            else
+                ImGui::TextDisabled("c%d ", col);
+            for (int row = 0; row < 8; ++row) {
+                ImGui::SameLine();
+                bool pressed = !(keyMatrix_[col] & (1 << row));
+                if (pressed)
+                    ImGui::TextColored({0.2f, 1.0f, 0.3f, 1.0f}, "  * ");
+                else
+                    ImGui::TextDisabled("  . ");
+            }
+        }
+        ImGui::Separator();
+        ImGui::TextDisabled("* = pressed   yellow col = KERNAL scanning");
+    }
+
+    if (!iecDevices_.empty() && ImGui::CollapsingHeader("IEC Log", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::SmallButton("Clear##ieclog")) iecLog_.clear();
+
+        std::string logText;
+        logText.reserve(iecLog_.size() * 64);
+        for (auto& e : iecLog_) {
+            logText += e;
+            logText += '\n';
+        }
+        if (logText.empty())
+            logText = "(IEC log is empty)\n";
+        logText.push_back('\0');
+
+        ImGui::InputTextMultiline("##ieclogtext", logText.data(), logText.size(), {0, 140},
+            ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_AllowTabInput);
     }
 
     ImGui::End();

@@ -1,0 +1,15 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug (lldb)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/the-8-bit-machine.app/Contents/MacOS/the-8-bit-machine",
+            "args": [],
+            "cwd": "${workspaceFolder}/build/the-8-bit-machine.app/Contents/Resources",
+            "preLaunchTask": "cmake: build",
+            "stopOnEntry": false
+        }
+    ]
+}

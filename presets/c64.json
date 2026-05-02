@@ -5,7 +5,7 @@
   "description": "MOS 6510 @ ~1 MHz · VIC-IIe · SID 6581 · 64 KB RAM + bank-switched ROMs",
   "cpu": "MOS 6510",
   "cycles_per_frame": 16667,
-  "key_matrix_transpose": true,
+  "key_matrix_transpose": false,
   "roms": [
     { "key": "kernal", "label": "KERNAL", "description": "8 KB KERNAL ROM" },
     { "key": "basic",  "label": "BASIC",  "description": "8 KB BASIC ROM"  },
