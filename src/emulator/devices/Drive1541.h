@@ -50,6 +50,12 @@ public:
     void drawPanel(const char* title, bool* open) override;
 
     // -----------------------------------------------------------------------
+    // Reset IEC state machine without ejecting the disk image.
+    // Call whenever the host machine resets (C64 F8 / cold boot).
+    // -----------------------------------------------------------------------
+    void reset();
+
+    // -----------------------------------------------------------------------
     // Clock — call once per C64 clock cycle (≈ 1 MHz).
     // Drives the IEC bit-bang handshake timing.
     // -----------------------------------------------------------------------
@@ -94,6 +100,7 @@ private:
         TalkSendBit,        // pull CLK low, set DATA
         TalkHoldBit,        // release CLK (C64 samples)
         TalkBitSettle,      // hold DATA briefly after CLK rises
+        TalkByteACK,        // CLK=0 DATA=1, wait for host DATA=0 frame ack
     };
 
     State   state_     = State::Idle;

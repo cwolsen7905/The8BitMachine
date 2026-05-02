@@ -21,7 +21,7 @@
 #include <cstdio>
 #include <cstring>
 
-static constexpr const char* kAppVersion = "v0.31.0";
+static constexpr const char* kAppVersion = "v0.32.0";
 
 // ---------------------------------------------------------------------------
 // Construction / destruction
@@ -702,6 +702,7 @@ void Application::emulatorStep() {
 
 void Application::emulatorReset() {
     machine_.reset();
+    drive1541_.reset();
     cycleCount_      = 0;
     emulatorRunning_ = false;
 

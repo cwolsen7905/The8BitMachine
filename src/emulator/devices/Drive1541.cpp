@@ -1,6 +1,5 @@
 #include "Drive1541.h"
 #include <imgui.h>
-#include <algorithm>
 #include <cctype>
 #include <cstring>
 
@@ -26,6 +25,7 @@ static constexpr uint8_t SA_OPEN  = 0xF0;  // 0xF0–0xFF: open channel
 
 // CLK hold time (cycles) before releasing for non-EOI byte.  Must be <200µs.
 static constexpr int kNormalReadyCycles = 50;
+
 
 // ---------------------------------------------------------------------------
 // Construction
@@ -57,14 +57,29 @@ bool Drive1541::mount(const std::string& path) {
 void Drive1541::eject() {
     image_.unload();
     mountError_.clear();
+    reset();
+}
+
+void Drive1541::reset() {
     for (auto& ch : channels_) ch = Channel{};
     txBuf_.clear(); txPos_ = 0;
     rxBuf_.clear();
-    state_     = State::Idle;
-    listening_ = false;
-    talking_   = false;
-    channel_   = -1;
+    state_         = State::Idle;
+    listening_     = false;
+    talking_       = false;
+    channel_       = -1;
+    shiftReg_      = 0;
+    bitCount_      = 0;
+    waitCycles_    = 0;
+    eoiTimer_      = 0;
+    talkEoiCycles_ = 0;
+    txEOI_         = false;
+    clkRoseFlag_   = false;
+    prevClk_       = true;
+    prevAtn_       = true;
+    hostIn_        = { true, true, true };
     releaseAll();
+    logEvent("IEC reset");
 }
 
 std::vector<uint8_t> Drive1541::getDirectoryData() {
@@ -134,14 +149,16 @@ void Drive1541::setIECLines(IECLines host) {
 
     // Log raw IEC line transitions — suppress during bit-transfer states to avoid flooding.
     if (host.atn != prevHost.atn || host.clk != prevHost.clk || host.data != prevHost.data) {
-        bool isBitTransfer = (state_ == State::TalkSendBit   ||
-                              state_ == State::TalkHoldBit   ||
-                              state_ == State::TalkBitSettle ||
-                              state_ == State::TalkNormalReady ||
-                              state_ == State::TalkWaitClkHigh ||
+        bool isBitTransfer = (state_ == State::TalkSendBit        ||
+                              state_ == State::TalkHoldBit        ||
+                              state_ == State::TalkBitSettle      ||
+                              state_ == State::TalkByteACK        ||
+                              state_ == State::TalkNormalReady    ||
+                              state_ == State::TalkWaitClkHigh    ||
                               state_ == State::TalkWaitHostDataHigh ||
-                              state_ == State::AtnReceiveBit ||
-                              state_ == State::ListenReceiveBit ||
+                              state_ == State::TalkEOI            ||
+                              state_ == State::AtnReceiveBit      ||
+                              state_ == State::ListenReceiveBit   ||
                               state_ == State::ListenBitSettle);
         if (!isBitTransfer || host.atn != prevHost.atn) {
             char buf[96];
@@ -344,7 +361,9 @@ void Drive1541::clock() {
         break;
 
     case State::TalkWaitClkHigh:
-        // Wait for C64 to release CLK (ACPTR EE18)
+        // Wait for C64 to release CLK (ACPTR $EE18); then signal "ready-to-send".
+        // Entered after role reversal (TalkStart) or after a frame ACK (TalkByteACK).
+        // txPos_ always points to the next byte to send here.
         driven_.clk = true;
         driven_.data = true;
         if (clk) {
@@ -352,14 +371,17 @@ void Drive1541::clock() {
             bitCount_ = 0;
             txEOI_ = (txPos_ == txBuf_.size() - 1);
             if (txEOI_) {
-                // EOI byte: hold CLK HIGH so ACPTR Timer B detects the long CLK-HIGH window.
-                // Pulling CLK LOW here (setup pulse) would make ACPTR's $EE3C BPL branch to
-                // bit-receive before Timer B fires, skipping the EOI ack entirely.
+                // EOI byte: must wait for DATA=1 (host releases frame-ACK from prior
+                // byte) before holding CLK HIGH for the EOI timeout.  Jumping straight
+                // to TalkEOI while DATA is still LOW from the previous frame-ACK causes
+                // TalkEOI to see DATA=0 immediately and misidentify it as the EOI ack
+                // (observed: "EOI ack from C64 after 1 cycles").
+                // TalkWaitHostDataHigh will route to TalkEOI once DATA goes HIGH.
                 talkEoiCycles_ = 0;
-                logEvent("→ TalkEOI: last byte, holding CLK HIGH for Timer B");
-                state_ = State::TalkEOI;
+                logEvent("→ TalkWaitHostDataHigh (EOI): wait DATA=1 before EOI hold");
+                state_ = State::TalkWaitHostDataHigh;
             } else {
-                driven_.clk = false;  // CLK LOW setup pulse for normal bytes
+                driven_.clk = false;
                 waitCycles_ = kNormalReadyCycles;
                 state_ = State::TalkNormalReady;
             }
@@ -367,8 +389,9 @@ void Drive1541::clock() {
         break;
 
     case State::TalkEOI:
-        // Hold CLK HIGH; ACPTR Timer B fires after ~512 cycles and C64 pulls DATA LOW (EOI ack).
-        // After ack, wait for C64 to release DATA, then send last byte bits normally.
+        // CLK stays HIGH here (set in TalkWaitClkHigh, unchanged).
+        // KERNAL's CIA1 Timer B (511 cycles) fires while CLK is HIGH; KERNAL then
+        // acks EOI by pulling DATA LOW briefly.  Watch for that pulse.
         driven_.clk = true;
         driven_.data = true;
         if (++talkEoiCycles_ % 5000 == 0) {
@@ -382,7 +405,6 @@ void Drive1541::clock() {
             logEvent(b);
             talkEoiCycles_ = 0;
             txEOI_ = false;
-            // Don't pull CLK LOW here — TalkSendBit will do it when it's ready to send bit 0.
             state_ = State::TalkWaitHostDataHigh;
         }
         break;
@@ -408,7 +430,7 @@ void Drive1541::clock() {
         if (waitCycles_ == 0) {
             driven_.clk = false; // CLK low
             driven_.data = (bool)((shiftReg_ >> bitCount_) & 1); // bit 1 → DATA HIGH, bit 0 → DATA LOW
-            waitCycles_ = 20;
+            waitCycles_ = 60;
             state_ = State::TalkHoldBit;
         }
         break;
@@ -416,12 +438,12 @@ void Drive1541::clock() {
     case State::TalkHoldBit:
         // Countdown already done by early-return; release CLK so C64 samples DATA.
         driven_.clk = true;
-        waitCycles_ = 20;
+        waitCycles_ = 60;
         state_ = State::TalkBitSettle;
         break;
 
     case State::TalkBitSettle:
-        // Countdown done; CLK was high for 20 cycles. Advance to next bit.
+        // Countdown done; CLK was high for 60 cycles. Advance to next bit.
         bitCount_++;
         if (bitCount_ == 8) {
             txPos_++;
@@ -430,16 +452,39 @@ void Drive1541::clock() {
                 char b[48]; snprintf(b, sizeof(b), "TX pos %zu/%zu", txPos_, txBuf_.size());
                 logEvent(b);
             }
+            // After bit 7, go to TalkByteACK which pulls CLK=0 and waits for the
+            // host's DATA=0 frame acknowledgment (VICE P_DONE0 / P_DONE1).
+            // This is required after every byte — without it the host never gets
+            // a chance to ACK and the load hangs permanently.
+            talkEoiCycles_ = 0;
+            state_ = State::TalkByteACK;
+        } else {
+            waitCycles_ = 0;
+            state_ = State::TalkSendBit;
+        }
+        break;
+
+    case State::TalkByteACK:
+        // Spec step 5 (VICE P_DONE0 / P_DONE1): pull CLK=0 DATA=1 to signal
+        // "byte complete", then wait for the host to pull DATA=0 (frame ACK).
+        // The KERNAL does this at the end of ACPTR before returning the byte.
+        // Without this wait the host never acknowledges and the load hangs.
+        driven_.clk  = false;
+        driven_.data = true;
+        if (!data) {
             if (txPos_ < txBuf_.size()) {
                 state_ = State::TalkWaitClkHigh;
             } else {
                 logEvent("TX complete → Idle");
-                state_ = State::Idle;
+                releaseAll();
                 talking_ = false;
+                state_ = State::Idle;
             }
-        } else {
-            waitCycles_ = 0;
-            state_ = State::TalkSendBit;
+        } else if (++talkEoiCycles_ >= 1000) {
+            logEvent("ByteACK timeout — no frame ACK from host");
+            releaseAll();
+            talking_ = false;
+            state_ = State::Idle;
         }
         break;
 
