@@ -274,5 +274,8 @@ void Application::rewirePeripherals(const std::string& presetType) {
         machine_.cia2().connectIEC(&drive1541_);
         peripherals_.push_back(&drive1541_);
         peripheralPanelVisible_[&drive1541_] = false;
+
+        peripherals_.push_back(&machine_.epyxFastLoad());
+        peripheralPanelVisible_[&machine_.epyxFastLoad()] = false;
     }
 }

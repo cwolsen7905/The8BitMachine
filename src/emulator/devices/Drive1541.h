@@ -4,6 +4,7 @@
 #include "emulator/core/IHasPanel.h"
 #include "emulator/core/IPeripheral.h"
 #include "emulator/devices/D64Image.h"
+#include "emulator/devices/T64Image.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -39,7 +40,9 @@ public:
     // IPeripheral
     // -----------------------------------------------------------------------
     const char*        peripheralName() const override;
-    const std::string& mountedImage()   const override { return image_.path(); }
+    const std::string& mountedImage()   const override {
+        return t64_.isLoaded() ? t64_.path() : image_.path();
+    }
     bool               mount(const std::string& path) override;
     void               eject()          override;
     const std::string& mountError()     const override { return mountError_; }
@@ -67,6 +70,7 @@ private:
     std::vector<uint8_t> getDirectoryData();
     int      deviceNumber_;
     D64Image image_;
+    T64Image t64_;
     std::string mountError_;
     std::string peripheralName_;  // cached "Drive 8 (1541)" string
 

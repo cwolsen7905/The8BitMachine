@@ -113,6 +113,8 @@ set(SOURCES
     src/emulator/devices/C64KeyMapper.cpp
     src/emulator/devices/CIA6526.cpp
     src/emulator/devices/D64Image.cpp
+    src/emulator/devices/EpyxFastLoad.cpp
+    src/emulator/devices/T64Image.cpp
     src/emulator/devices/Drive1541.cpp
     src/emulator/devices/ULA.cpp
     src/emulator/devices/AppleIIVideo.cpp

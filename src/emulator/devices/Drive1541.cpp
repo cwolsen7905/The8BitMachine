@@ -1,5 +1,6 @@
 #include "Drive1541.h"
 #include <imgui.h>
+#include <algorithm>
 #include <cctype>
 #include <cstring>
 
@@ -45,17 +46,28 @@ const char* Drive1541::peripheralName() const {
     return peripheralName_.c_str();
 }
 
+static bool hasExtension(const std::string& path, const char* ext) {
+    std::string lower = path;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    auto pos = lower.rfind('.');
+    return pos != std::string::npos && lower.substr(pos) == ext;
+}
+
 bool Drive1541::mount(const std::string& path) {
     mountError_.clear();
-    if (!image_.load(path)) {
-        mountError_ = image_.error();
-        return false;
+    if (hasExtension(path, ".t64")) {
+        image_.unload();
+        if (!t64_.load(path)) { mountError_ = t64_.error(); return false; }
+    } else {
+        t64_.unload();
+        if (!image_.load(path)) { mountError_ = image_.error(); return false; }
     }
     return true;
 }
 
 void Drive1541::eject() {
     image_.unload();
+    t64_.unload();
     mountError_.clear();
     reset();
 }
@@ -568,7 +580,7 @@ void Drive1541::handleListenByte(uint8_t byte) {
 // ---------------------------------------------------------------------------
 
 void Drive1541::openChannel(int ch, const std::string& name) {
-    if (!image_.isLoaded()) {
+    if (!image_.isLoaded() && !t64_.isLoaded()) {
         logEvent("openChannel: no image mounted");
         return;
     }
@@ -578,15 +590,15 @@ void Drive1541::openChannel(int ch, const std::string& name) {
     std::vector<uint8_t> data;
 
     if (normalized == "*") {
-        data = image_.firstPRG();
+        data = t64_.isLoaded() ? t64_.firstPRG() : image_.firstPRG();
         if (data.empty())
-            logEvent("openChannel: no PRG file found on disk");
+            logEvent("openChannel: no PRG file found");
     } else {
         if (!normalized.empty() && normalized[0] == '$') {
             logEvent("openChannel: directory listing not yet supported");
             return;
         }
-        data = image_.findPRG(normalized);
+        data = t64_.isLoaded() ? t64_.findPRG(normalized) : image_.findPRG(normalized);
         if (data.empty())
             logEvent("openChannel: PRG \"" + normalized + "\" not found");
     }
@@ -640,6 +652,25 @@ void Drive1541::drawPanel(const char* title, bool* open) {
                 ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(de.name.c_str());
                 ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(de.isPRG() ? "PRG" : "---");
                 ImGui::TableSetColumnIndex(2); ImGui::Text("%d", de.blocks);
+            }
+            ImGui::EndTable();
+        }
+    } else if (t64_.isLoaded()) {
+        ImGui::Text("Image : %s", t64_.path().c_str());
+        ImGui::Text("Tape  : %s", t64_.tapeName().c_str());
+        ImGui::Separator();
+
+        if (ImGui::BeginTable("t64dir", 2,
+                ImGuiTableFlags_BordersInner | ImGuiTableFlags_RowBg |
+                ImGuiTableFlags_ScrollY, ImVec2(0, 150))) {
+            ImGui::TableSetupScrollFreeze(0, 1);
+            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 40.f);
+            ImGui::TableHeadersRow();
+            for (const auto& e : t64_.entries()) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(e.name.c_str());
+                ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(e.isPRG() ? "PRG" : "---");
             }
             ImGui::EndTable();
         }

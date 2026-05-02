@@ -1,5 +1,6 @@
 #include "Application.h"
 #include "emulator/core/ICPU.h"
+#include "emulator/devices/EpyxFastLoad.h"
 #include "emulator/devices/SID6581.h"
 #include "emulator/devices/VIC6566.h"
 #include "gui/FileDialog.h"
@@ -895,13 +896,34 @@ void Application::drawPeripheralsMenu() {
             } else {
                 ImGui::TextDisabled("(no image)");
             }
-            if (ImGui::MenuItem("Mount .d64...")) {
-                std::string path = FileDialog::openFile("D64 disk image\0*.d64\0All files\0*.*\0");
-                if (!path.empty()) {
-                    if (!p->mount(path))
-                        termPrint("[Drive] Mount failed: " + p->mountError());
-                    else
-                        termPrint("[Drive] Mounted: " + path);
+            if (dynamic_cast<EpyxFastLoad*>(p)) {
+                if (ImGui::MenuItem("Mount .bin...")) {
+                    std::string path = FileDialog::openFile("Epyx FastLoad ROM\0*.bin\0All files\0*.*\0");
+                    if (!path.empty()) {
+                        if (!p->mount(path))
+                            termPrint("[Cart] Mount failed: " + p->mountError());
+                        else
+                            termPrint("[Cart] Mounted: " + path);
+                    }
+                }
+            } else {
+                if (ImGui::MenuItem("Mount .d64...")) {
+                    std::string path = FileDialog::openFile("D64 disk image\0*.d64\0All files\0*.*\0");
+                    if (!path.empty()) {
+                        if (!p->mount(path))
+                            termPrint("[Drive] Mount failed: " + p->mountError());
+                        else
+                            termPrint("[Drive] Mounted: " + path);
+                    }
+                }
+                if (ImGui::MenuItem("Mount .t64...")) {
+                    std::string path = FileDialog::openFile("T64 tape image\0*.t64\0All files\0*.*\0");
+                    if (!path.empty()) {
+                        if (!p->mount(path))
+                            termPrint("[Drive] Mount failed: " + p->mountError());
+                        else
+                            termPrint("[Drive] Mounted: " + path);
+                    }
                 }
             }
             ImGui::EndMenu();
