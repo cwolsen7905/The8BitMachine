@@ -278,6 +278,13 @@ void Application::rewirePeripherals(const std::string& presetType) {
         peripherals_.push_back(&drive1541_);
         peripheralPanelVisible_[&drive1541_] = false;
 
+        drive1541_.onWarpToggle = [this](bool enabled) {
+            if (!drive1541_.mountedImage().empty()) {
+                if (enabled) machine_.enableWarpLoad();
+                else         machine_.disableWarpLoad();
+            }
+        };
+
         peripherals_.push_back(&machine_.epyxFastLoad());
         peripheralPanelVisible_[&machine_.epyxFastLoad()] = false;
     }

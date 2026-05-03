@@ -952,7 +952,7 @@ void Application::drawPeripheralsMenu() {
                                           char buf[5]; snprintf(buf, 5, "%04X", a); return std::string(buf);
                                       }(loadAddr));
                         };
-                        machine_.enableWarpLoad();
+                        if (drive1541_.warpEnabled()) machine_.enableWarpLoad();
                     }
                 };
                 if (ImGui::MenuItem("Mount .d64...")) {

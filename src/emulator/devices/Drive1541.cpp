@@ -692,6 +692,14 @@ void Drive1541::drawPanel(const char* title, bool* open) {
         ImGui::TextDisabled("No image mounted");
     }
 
+    ImGui::Spacing();
+    bool prev = warpEnabled_;
+    ImGui::Checkbox("Warp load", &warpEnabled_);
+    if (warpEnabled_ != prev && onWarpToggle) onWarpToggle(warpEnabled_);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Intercept KERNAL LOAD at $F533 and inject\n"
+                          "file bytes directly — no IEC bus activity.");
+
     ImGui::Separator();
     static const char* kStateNames[] = {
         "Idle",

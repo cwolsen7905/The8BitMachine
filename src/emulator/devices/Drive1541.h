@@ -6,6 +6,7 @@
 #include "emulator/devices/D64Image.h"
 #include "emulator/devices/T64Image.h"
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -56,6 +57,11 @@ public:
     // name is ASCII (already PETSCII-converted); "*" loads the first PRG.
     std::vector<uint8_t> loadFile(const std::string& name);
 
+    // Warp load toggle — when true and an image is mounted, LOAD is intercepted
+    // at the KERNAL level without using the IEC bus.  Toggling fires onWarpToggle.
+    bool warpEnabled() const { return warpEnabled_; }
+    std::function<void(bool)> onWarpToggle;
+
     // -----------------------------------------------------------------------
     // Reset IEC state machine without ejecting the disk image.
     // Call whenever the host machine resets (C64 F8 / cold boot).
@@ -77,6 +83,7 @@ private:
     T64Image t64_;
     std::string mountError_;
     std::string peripheralName_;  // cached "Drive 8 (1541)" string
+    bool        warpEnabled_ = false;
 
     // -----------------------------------------------------------------------
     // IEC line state we are driving (all released / high by default)
