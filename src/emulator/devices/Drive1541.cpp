@@ -109,51 +109,99 @@ void Drive1541::reset() {
 }
 
 std::vector<uint8_t> Drive1541::getDirectoryData() {
-    std::vector<uint8_t> dir;
-    // Load address 0x0801
-    dir.push_back(0x01);
-    dir.push_back(0x08);
-    // BASIC line: 0 "DISK DIRECTORY"
-    dir.push_back(0x00);
-    dir.push_back(0x00);
-    dir.push_back(0x20);
-    dir.push_back('"');
-    dir.push_back('D');
-    dir.push_back('I');
-    dir.push_back('S');
-    dir.push_back('K');
-    dir.push_back(' ');
-    dir.push_back('D');
-    dir.push_back('I');
-    dir.push_back('R');
-    dir.push_back('E');
-    dir.push_back('C');
-    dir.push_back('T');
-    dir.push_back('O');
-    dir.push_back('R');
-    dir.push_back('Y');
-    dir.push_back('"');
-    dir.push_back(0x00);
-    // Dummy file entry
-    dir.push_back(0x00);
-    dir.push_back(0x00);
-    dir.push_back(0x20);
-    dir.push_back(' ');
-    dir.push_back('"');
-    dir.push_back('T');
-    dir.push_back('E');
-    dir.push_back('S');
-    dir.push_back('T');
-    dir.push_back('"');
-    dir.push_back(' ');
-    dir.push_back('P');
-    dir.push_back('R');
-    dir.push_back('G');
-    dir.push_back(0x00);
-    // End of directory
-    dir.push_back(0x00);
-    dir.push_back(0x00);
-    return dir;
+    // Build a BASIC program representing the disk directory.
+    // Load address = $0801; link pointers are absolute from $0801.
+    // Format mirrors what a real 1541 sends over IEC.
+
+    struct BasicLine {
+        uint16_t lineNum;
+        std::vector<uint8_t> content;
+    };
+    std::vector<BasicLine> lines;
+
+    auto appendStr = [](std::vector<uint8_t>& v, const char* s) {
+        while (*s) v.push_back(static_cast<uint8_t>(*s++));
+    };
+    auto toUpper = [](char c) -> uint8_t {
+        return (c >= 'a' && c <= 'z') ? static_cast<uint8_t>(c - 'a' + 'A')
+                                      : static_cast<uint8_t>(c);
+    };
+    auto addNameField = [&](std::vector<uint8_t>& v, const std::string& name) {
+        v.push_back('"');
+        int written = 0;
+        for (char c : name) { v.push_back(toUpper(c)); ++written; }
+        for (; written < 16; ++written) v.push_back(' ');
+        v.push_back('"');
+    };
+
+    if (image_.isLoaded()) {
+        BasicLine hdr;
+        hdr.lineNum = 0;
+        hdr.content.push_back(0x12);  // reverse-on
+        addNameField(hdr.content, image_.diskName());
+        appendStr(hdr.content, " 00 2A");
+        lines.push_back(std::move(hdr));
+
+        for (const auto& de : image_.directory()) {
+            BasicLine fl;
+            fl.lineNum = de.blocks;
+            addNameField(fl.content, de.name);
+            fl.content.push_back(' ');
+            appendStr(fl.content, de.isPRG() ? "PRG" : "SEQ");
+            lines.push_back(std::move(fl));
+        }
+
+        BasicLine ftr;
+        ftr.lineNum = static_cast<uint16_t>(image_.freeBlocks());
+        appendStr(ftr.content, "BLOCKS FREE.");
+        lines.push_back(std::move(ftr));
+
+    } else if (t64_.isLoaded()) {
+        BasicLine hdr;
+        hdr.lineNum = 0;
+        hdr.content.push_back(0x12);
+        addNameField(hdr.content, t64_.tapeName());
+        appendStr(hdr.content, " T64  ");
+        lines.push_back(std::move(hdr));
+
+        for (const auto& e : t64_.entries()) {
+            if (!e.isPRG()) continue;
+            BasicLine fl;
+            fl.lineNum = 0;
+            addNameField(fl.content, e.name);
+            appendStr(fl.content, " PRG");
+            lines.push_back(std::move(fl));
+        }
+
+        BasicLine ftr;
+        ftr.lineNum = 0;
+        appendStr(ftr.content, "BLOCKS FREE.");
+        lines.push_back(std::move(ftr));
+    }
+
+    if (lines.empty()) return {};
+
+    // Serialize: [load addr][BASIC lines...][0x00 0x00]
+    const uint16_t base = 0x0801;
+    std::vector<uint8_t> out;
+    out.push_back(base & 0xFF);
+    out.push_back(base >> 8);
+
+    uint16_t addr = base;
+    for (const auto& line : lines) {
+        uint16_t lineSize = static_cast<uint16_t>(2 + 2 + line.content.size() + 1);
+        uint16_t next = addr + lineSize;
+        out.push_back(next & 0xFF);
+        out.push_back(next >> 8);
+        out.push_back(line.lineNum & 0xFF);
+        out.push_back(line.lineNum >> 8);
+        for (uint8_t b : line.content) out.push_back(b);
+        out.push_back(0x00);
+        addr = next;
+    }
+    out.push_back(0x00);
+    out.push_back(0x00);
+    return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -607,11 +655,11 @@ void Drive1541::openChannel(int ch, const std::string& name) {
         data = t64_.isLoaded() ? t64_.firstPRG() : image_.firstPRG();
         if (data.empty())
             logEvent("openChannel: no PRG file found");
+    } else if (!normalized.empty() && normalized[0] == '$') {
+        data = getDirectoryData();
+        if (data.empty())
+            logEvent("openChannel: no image mounted for directory");
     } else {
-        if (!normalized.empty() && normalized[0] == '$') {
-            logEvent("openChannel: directory listing not yet supported");
-            return;
-        }
         data = t64_.isLoaded() ? t64_.findPRG(normalized) : image_.findPRG(normalized);
         if (data.empty())
             logEvent("openChannel: PRG \"" + normalized + "\" not found");
