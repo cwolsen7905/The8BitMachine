@@ -98,6 +98,13 @@ public:
     uint8_t ddrB()  const { return ddrb_; }
 
     // -----------------------------------------------------------------------
+    // Virtual joystick ports (C64: Port A = Joy 2, Port B = Joy 1)
+    // Bits 0-4: Up, Down, Left, Right, Fire — active low (0 = pressed).
+    // Call enableJoystickPorts() once to show the joystick panel section.
+    // -----------------------------------------------------------------------
+    void enableJoystickPorts() { joystickPorts_ = true; }
+
+    // -----------------------------------------------------------------------
     // Register offsets
     // -----------------------------------------------------------------------
     static constexpr uint8_t REG_PRA      = 0x00;
@@ -193,6 +200,11 @@ private:
 
     // Keyboard matrix — column bytes, active-low (0xFF = no keys pressed)
     uint8_t keyMatrix_[8] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
+
+    // Virtual joystick state — active-low; bits 0-4 = Up/Down/Left/Right/Fire
+    bool    joystickPorts_ = false;
+    uint8_t joystickA_     = 0xFF;  // Port A — Joy 2 on C64
+    uint8_t joystickB_     = 0xFF;  // Port B — Joy 1 on C64
 
     // Keyboard scan history for the debug panel
     uint8_t lastScanPRA_       = 0xFF;  // last PRA written

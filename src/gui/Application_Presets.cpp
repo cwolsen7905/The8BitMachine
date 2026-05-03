@@ -274,6 +274,7 @@ void Application::rewirePeripherals(const std::string& presetType) {
     peripheralPanelVisible_.clear();
 
     if (presetType == "c64") {
+        machine_.cia1().enableJoystickPorts();
         machine_.cia2().connectIEC(&drive1541_);
         peripherals_.push_back(&drive1541_);
         peripheralPanelVisible_[&drive1541_] = false;
