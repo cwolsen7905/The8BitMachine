@@ -14,7 +14,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ---
 
-## Current State  (v0.31.0)
+## Current State  (v0.33.2)
 
 ### Machine Designer
 - **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and `statusLine()` for the designer panel. Devices that expose an ImGui debug panel also implement the separate **`IHasPanel`** interface (`drawPanel()`), keeping UI knowledge out of the core device contract
@@ -83,7 +83,7 @@ Zilog Z80:
 - **Apple IIe preset** — `presets/apple2e.json`; ROM picker auto-detects 12 KB, 16 KB, or 32 KB ROM images and mounts them at the correct address (`$D000` or `$C000`); 48 KB RAM at `$0000–$BFFF`; WDC 65C02 CPU at ~1 MHz
 - **AppleIIVideo** — 280×192 green-phosphor framebuffer; text mode: 40×24 characters from an embedded 128-character ROM with inverse and flash rendering; hi-res mode: monochrome 280×192 bitmap; mixed mode: bottom 4 rows text; page 1/2 soft switches
 - **AppleIIIO** — keyboard latch at `$C000`, strobe clear at `$C010`, soft switches at `$C050–$C057` (GRAPHICS/TEXT/FULLSCR/MIXED/PAGE1/PAGE2/LORES/HIRES); SDL key events translated to Apple II ASCII including shift and control
-- **Drive 1541** — MOS 1541 software IEC state machine; mounts `.d64` and `.t64` images via Peripherals menu; debug panel shows bus line state, transfer log, and directory listing
+- **Drive 1541** — MOS 1541 software IEC state machine; mounts `.d64` and `.t64` images via Peripherals menu; debug panel shows bus line state, transfer log, and directory listing; parses full CBM DOS filenames including drive prefix (`0:`) and type/mode suffix (`,P,R`); channel 15 error/status channel always open (returns `73,CBM DOS V2.6 1541` at reset, `00,OK` or `62,FILE NOT FOUND` after OPEN)
 - **Warp load** — opt-in toggle in the Drive panel (off by default); when enabled and an image is mounted, a `WarpLoadTrap` intercepts the KERNAL ILOAD entry (`$F533`) and injects file bytes directly into RAM without IEC bus activity; standard IEC loading is used when the toggle is off; `[Warp] Loaded …` confirmation printed to terminal when active
 - **Epyx FastLoad cartridge** — 8 KB ROM at `$8000–$9FFF` with capacitor-based 512-cycle enable window; IO1/IO2 ranges routed through `C64IOSpace`; mount `.bin` image via Peripherals menu
 - **CHAR_OUT port at `$F000`** — CPU writes here appear in the Terminal panel (line-buffered; flushed on LF)
