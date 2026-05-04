@@ -21,7 +21,7 @@ static std::string normalizeFileName(std::string name) {
 // CBM serial secondary-address command nibbles (upper nibble of SA byte)
 // ---------------------------------------------------------------------------
 static constexpr uint8_t SA_DATA  = 0x60;  // 0x60–0x6F: data channel
-static constexpr uint8_t SA_CLOSE = 0x70;  // 0x70–0x7F: close channel
+static constexpr uint8_t SA_CLOSE = 0xE0;  // 0xE0–0xEF: close channel
 static constexpr uint8_t SA_OPEN  = 0xF0;  // 0xF0–0xFF: open channel
 
 // CLK hold time (cycles) before releasing for non-EOI byte.  Must be <200µs.
@@ -444,21 +444,14 @@ void Drive1541::clock() {
             shiftReg_ = txBuf_[txPos_];
             bitCount_ = 0;
             txEOI_ = (txPos_ == txBuf_.size() - 1);
-            if (txEOI_) {
-                // EOI byte: must wait for DATA=1 (host releases frame-ACK from prior
-                // byte) before holding CLK HIGH for the EOI timeout.  Jumping straight
-                // to TalkEOI while DATA is still LOW from the previous frame-ACK causes
-                // TalkEOI to see DATA=0 immediately and misidentify it as the EOI ack
-                // (observed: "EOI ack from C64 after 1 cycles").
-                // TalkWaitHostDataHigh will route to TalkEOI once DATA goes HIGH.
-                talkEoiCycles_ = 0;
-                logEvent("→ TalkWaitHostDataHigh (EOI): wait DATA=1 before EOI hold");
-                state_ = State::TalkWaitHostDataHigh;
-            } else {
-                driven_.clk = false;
-                waitCycles_ = kNormalReadyCycles;
-                state_ = State::TalkNormalReady;
-            }
+            // Both EOI and normal bytes: hold CLK LOW for kNormalReadyCycles so the
+            // KERNAL has time to release DATA (it holds DATA while confirming the device
+            // took CLK).  TalkNormalReady releases CLK HIGH ("ready"), then
+            // TalkWaitHostDataHigh waits for DATA=1, then routes to TalkEOI or TalkSendBit.
+            talkEoiCycles_ = 0;
+            driven_.clk = false;
+            waitCycles_ = kNormalReadyCycles;
+            state_ = State::TalkNormalReady;
         }
         break;
 
@@ -546,6 +539,10 @@ void Drive1541::clock() {
         driven_.clk  = false;
         driven_.data = true;
         if (!data) {
+            // Persist position so re-TALK sessions resume from here.
+            if (channel_ >= 0 && channel_ < 16)
+                channels_[channel_].pos =
+                    channels_[channel_].data.size() - txBuf_.size() + txPos_;
             if (txPos_ < txBuf_.size()) {
                 state_ = State::TalkWaitClkHigh;
             } else {

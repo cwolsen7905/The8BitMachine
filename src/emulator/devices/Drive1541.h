@@ -25,7 +25,7 @@
 //   ATN low  → host is sending a command byte
 //   Byte transfer uses CLK/DATA handshake (CLK high = ready, DATA low = busy)
 //   Commands: LISTEN (0x20+dev), TALK (0x40+dev), OPEN (0x60+ch),
-//             DATA  (0x60+ch),  CLOSE(0x70+ch), UNLISTEN(0x3F), UNTALK(0x5F)
+//             DATA  (0x60+ch),  CLOSE(0xE0+ch), UNLISTEN(0x3F), UNTALK(0x5F)
 // ---------------------------------------------------------------------------
 class Drive1541 : public IIECDevice, public IPeripheral, public IHasPanel {
 public:
