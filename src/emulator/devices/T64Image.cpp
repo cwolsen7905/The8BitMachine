@@ -1,7 +1,19 @@
 #include "T64Image.h"
-#include <algorithm>
 #include <cctype>
 #include <fstream>
+
+static bool cbmMatch(const std::string& pattern, const std::string& name) {
+    size_t pi = 0, ni = 0;
+    while (pi < pattern.size()) {
+        if (pattern[pi] == '*') return true;
+        if (ni >= name.size()) return false;
+        char p = (char)std::tolower((unsigned char)pattern[pi]);
+        char n = (char)std::tolower((unsigned char)name[ni]);
+        if (p != '?' && p != n) return false;
+        ++pi; ++ni;
+    }
+    return ni == name.size();
+}
 
 // ---------------------------------------------------------------------------
 // PETSCII → ASCII (same mapping as D64Image)
@@ -135,14 +147,9 @@ std::vector<uint8_t> T64Image::firstPRG() const {
 }
 
 std::vector<uint8_t> T64Image::findPRG(const std::string& name) const {
-    std::string lower = name;
-    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-
     for (int i = 0; i < static_cast<int>(entries_.size()); ++i) {
         if (!entries_[i].isPRG()) continue;
-        std::string entLower = entries_[i].name;
-        std::transform(entLower.begin(), entLower.end(), entLower.begin(), ::tolower);
-        if (entLower == lower)
+        if (cbmMatch(name, entries_[i].name))
             return getFile(i);
     }
     return {};
