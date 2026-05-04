@@ -14,6 +14,14 @@ static std::string normalizeFileName(std::string name) {
         name = name.substr(1, name.size() - 2);
         trim(name);
     }
+    // Strip CBM DOS drive prefix: "0:" .. "9:"
+    if (name.size() >= 2 && std::isdigit(static_cast<unsigned char>(name[0])) && name[1] == ':')
+        name = name.substr(2);
+    // Strip CBM DOS type/mode suffix: ",P,R" etc. — anything after the first comma
+    auto comma = name.find(',');
+    if (comma != std::string::npos)
+        name = name.substr(0, comma);
+    trim(name);
     return name;
 }
 
@@ -105,6 +113,12 @@ void Drive1541::reset() {
     prevAtn_       = true;
     hostIn_        = { true, true, true };
     releaseAll();
+    // Channel 15 is the 1541 error/status channel — always open, pre-filled with
+    // the DOS version string that a real drive returns after power-on or reset.
+    static const char kDosVersion[] = "73,CBM DOS V2.6 1541,00,00\r";
+    channels_[15].data.assign(kDosVersion, kDosVersion + sizeof(kDosVersion) - 1);
+    channels_[15].pos  = 0;
+    channels_[15].open = true;
     logEvent("IEC reset");
 }
 
@@ -639,11 +653,15 @@ void Drive1541::handleListenByte(uint8_t byte) {
 // ---------------------------------------------------------------------------
 
 void Drive1541::openChannel(int ch, const std::string& name) {
+    if (ch < 0 || ch >= 16) return;
+
+    // Channel 15 is always open (error/status channel); no file open needed.
+    if (ch == 15) return;
+
     if (!image_.isLoaded() && !t64_.isLoaded()) {
         logEvent("openChannel: no image mounted");
         return;
     }
-    if (ch < 0 || ch >= 16) return;
 
     std::string normalized = normalizeFileName(name);
     std::vector<uint8_t> data;
@@ -661,6 +679,13 @@ void Drive1541::openChannel(int ch, const std::string& name) {
         if (data.empty())
             logEvent("openChannel: PRG \"" + normalized + "\" not found");
     }
+
+    // Update channel 15 error status.
+    static const char kOK[]       = "00,OK,00,00\r";
+    static const char kNotFound[] = "62,FILE NOT FOUND,00,00\r";
+    const char* status = data.empty() ? kNotFound : kOK;
+    channels_[15].data.assign(status, status + std::strlen(status));
+    channels_[15].pos  = 0;
 
     if (data.empty()) return;
 
