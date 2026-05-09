@@ -876,12 +876,18 @@ void Application::saveUIState(const std::string& path) {
     ui["device_panels"] = devPanels;
 
     json periphPanels = json::object();
+    json periphImages = json::object();
     for (auto* p : peripherals_) {
+        const std::string name = p->peripheralName();
         auto it = peripheralPanelVisible_.find(p);
         if (it != peripheralPanelVisible_.end())
-            periphPanels[p->peripheralName()] = it->second;
+            periphPanels[name] = it->second;
+        if (!p->mountedImage().empty())
+            periphImages[name] = p->mountedImage();
     }
-    ui["peripheral_panels"] = periphPanels;
+    ui["peripheral_panels"]  = periphPanels;
+    ui["peripheral_images"]  = periphImages;
+    ui["drive1541_warp"]     = drive1541_.warpEnabled();
 
     json bpArray = json::array();
     for (uint16_t addr : breakpoints_)
@@ -942,6 +948,17 @@ void Application::loadUIState(const std::string& path) {
                 peripheralPanelVisible_[p] = pp[p->peripheralName()].get<bool>();
         }
     }
+
+    if (ui.contains("peripheral_images") && ui["peripheral_images"].is_object()) {
+        const auto& pi = ui["peripheral_images"];
+        for (auto* p : peripherals_) {
+            if (pi.contains(p->peripheralName()))
+                p->mount(pi[p->peripheralName()].get<std::string>());
+        }
+    }
+
+    if (ui.value("drive1541_warp", false))
+        drive1541_.setWarpEnabled(true);
 
     if (ui.contains("breakpoints") && ui["breakpoints"].is_array()) {
         for (const auto& bp : ui["breakpoints"])
