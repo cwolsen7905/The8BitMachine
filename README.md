@@ -101,20 +101,45 @@ Zilog Z80:
 
 ## Prerequisites
 
+### macOS
+
 | Tool | Install |
 |------|---------|
 | CMake ≥ 3.20 | `brew install cmake` |
 | SDL2 | `brew install sdl2` |
-| cc65 (ca65/ld65) | `brew install cc65` |
-| C++17 compiler | Xcode Command Line Tools (`xcode-select --install`) |
+| SDL2_image | `brew install sdl2_image` |
+| cc65 (ca65/ld65) | `brew install cc65` *(optional — only for ROM assembly)* |
+| C++17 compiler | `xcode-select --install` |
 
-Dear ImGui (docking branch, v1.91.6) is fetched automatically by CMake.
+### Linux (Debian/Ubuntu)
 
-cc65 is only needed to rebuild the 6502 assembly ROMs from source. The build script skips the assembly step with a warning if cc65 is not installed.
+```bash
+sudo apt install cmake build-essential libsdl2-dev libsdl2-image-dev libgtk-3-dev
+# optional — only needed to rebuild 6502 ROM sources:
+sudo apt install cc65
+```
+
+GTK3 (`libgtk-3-dev`) is required by nativefiledialog-extended for the native file-open/save dialogs.
+
+### Windows
+
+Install prerequisites via [vcpkg](https://vcpkg.io) or [Chocolatey](https://chocolatey.org):
+
+```powershell
+# vcpkg (recommended)
+vcpkg install sdl2 sdl2-image
+# then configure CMake with -DCMAKE_TOOLCHAIN_FILE=<vcpkg root>/scripts/buildsystems/vcpkg.cmake
+```
+
+Dear ImGui, nlohmann/json, and nativefiledialog-extended are fetched automatically by CMake — no manual install needed.
+
+cc65 is only needed to rebuild the 6502 assembly ROMs from source. The build skips the assembly step with a warning if cc65 is not found.
 
 ---
 
 ## Building
+
+### macOS / Linux
 
 ```bash
 ./build.sh             # Debug build (default)
@@ -128,7 +153,14 @@ cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build --parallel
 ```
 
-The binary is placed at `build/the-8-bit-machine`.
+### Windows
+
+```powershell
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=<vcpkg root>/scripts/buildsystems/vcpkg.cmake
+cmake --build build --parallel
+```
+
+The binary is placed at `build/the-8-bit-machine` (or `build\Debug\the-8-bit-machine.exe` on Windows).
 
 ---
 
@@ -242,8 +274,10 @@ Device instances are owned by `Machine`.  The default map is:
 
 | Library | Version | Source |
 |---------|---------|--------|
-| [SDL2](https://libsdl.org) | ≥ 2.0.22 | Homebrew |
+| [SDL2](https://libsdl.org) | ≥ 2.0.22 | System package manager |
+| [SDL2_image](https://wiki.libsdl.org/SDL2_image) | ≥ 2.0 | System package manager |
 | [Dear ImGui](https://github.com/ocornut/imgui) | v1.91.6-docking | CMake FetchContent |
-| OpenGL | 3.3 core | System (macOS) |
+| [nativefiledialog-extended](https://github.com/btzy/nativefiledialog-extended) | v1.2.1 | CMake FetchContent |
+| OpenGL | 3.3 core | System |
 | [nlohmann/json](https://github.com/nlohmann/json) | v3.11.3 | CMake FetchContent |
-| [cc65](https://cc65.github.io) (ca65/ld65) | ≥ 2.19 | Homebrew (optional) |
+| [cc65](https://cc65.github.io) (ca65/ld65) | ≥ 2.19 | System package manager (optional) |

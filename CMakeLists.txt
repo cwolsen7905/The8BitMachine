@@ -1,8 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
 project(the-8-bit-machine VERSION 0.1.0 LANGUAGES CXX)
-if(APPLE)
-    enable_language(OBJCXX)
-endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -70,6 +67,17 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+# ---------------------------------------------------------------------------
+# nativefiledialog-extended  (cross-platform file dialogs; fetched at configure time)
+# ---------------------------------------------------------------------------
+FetchContent_Declare(
+    nfd
+    GIT_REPOSITORY https://github.com/btzy/nativefiledialog-extended.git
+    GIT_TAG        v1.2.1
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(nfd)
+
 add_library(imgui_lib STATIC
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
@@ -125,9 +133,7 @@ set(SOURCES
     src/emulator/devices/VIC6566.cpp
 )
 
-if(APPLE)
-    list(APPEND SOURCES src/gui/FileDialog.mm)
-endif()
+list(APPEND SOURCES src/gui/FileDialog.cpp)
 
 if(APPLE)
     add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${SOURCES})
@@ -142,7 +148,7 @@ else()
     add_executable(${PROJECT_NAME} ${SOURCES})
 endif()
 target_include_directories(${PROJECT_NAME} PRIVATE src)
-target_link_libraries(${PROJECT_NAME} PRIVATE imgui_lib SDL2::SDL2 SDL2_image::SDL2_image OpenGL::GL nlohmann_json::nlohmann_json)
+target_link_libraries(${PROJECT_NAME} PRIVATE imgui_lib SDL2::SDL2 SDL2_image::SDL2_image OpenGL::GL nlohmann_json::nlohmann_json nfd)
 
 if(APPLE)
     target_compile_definitions(${PROJECT_NAME} PRIVATE GL_SILENCE_DEPRECATION)
