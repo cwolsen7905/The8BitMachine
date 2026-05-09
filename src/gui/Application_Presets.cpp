@@ -273,6 +273,11 @@ void Application::rewirePeripherals(const std::string& presetType) {
     peripherals_.clear();
     peripheralPanelVisible_.clear();
 
+    if (presetType == "apple2e") {
+        peripherals_.push_back(&machine_.diskII());
+        peripheralPanelVisible_[&machine_.diskII()] = false;
+    }
+
     if (presetType == "c64") {
         machine_.cia1().enableJoystickPorts();
         machine_.cia2().connectIEC(&drive1541_);
