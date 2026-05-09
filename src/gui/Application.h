@@ -71,6 +71,7 @@ private:
     SDL_GLContext      glContext_   = nullptr;
     SDL_AudioDeviceID  audioDevice_ = 0;
     bool               running_     = false;
+    std::string        imguiIniPath_;   // persisted so the char* stays valid for ImGui
     GLuint             screenTex_   = 0;  // active screen texture
     int                screenTexW_  = 0;  // dimensions of the allocated texture
     int                screenTexH_  = 0;
@@ -262,6 +263,8 @@ private:
     void loadMachineConfigDialog();
     void scanPresets();
     std::string sessionFilePath() const;
+    void        saveUIState(const std::string& path);
+    void        loadUIState(const std::string& path);
     void drawPresetDialog();
     void buildActivePreset();
     void injectC64KeyMatrix(const char* title, bool* open);

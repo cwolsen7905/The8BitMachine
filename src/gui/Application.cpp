@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <nlohmann/json.hpp>
 
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_opengl3.h>
@@ -125,7 +126,16 @@ bool Application::init() {
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    io.IniFilename = "imgui_layout.ini";
+    {
+        char* prefPath = SDL_GetPrefPath("the8bitmachine", "The8BitMachine");
+        if (prefPath) {
+            imguiIniPath_ = std::string(prefPath) + "imgui_layout.ini";
+            SDL_free(prefPath);
+        } else {
+            imguiIniPath_ = "imgui_layout.ini";
+        }
+    }
+    io.IniFilename = imguiIniPath_.c_str();
 
     ImGui::StyleColorsDark();
 
@@ -205,6 +215,7 @@ bool Application::init() {
                     cyclesPerFrame_ = result.cyclesPerFrame;
                 cycleCount_ = 0;
             }
+            loadUIState(sessionPath);
         }
     }
 
@@ -237,8 +248,10 @@ void Application::run() {
 
     // Save session on clean exit
     const std::string sessionPath = sessionFilePath();
-    if (!sessionPath.empty())
+    if (!sessionPath.empty()) {
         machine_.saveConfig(sessionPath, cyclesPerFrame_);
+        saveUIState(sessionPath);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -830,6 +843,120 @@ std::string Application::sessionFilePath() const {
     std::string path = std::string(prefPath) + "last_session.json";
     SDL_free(prefPath);
     return path;
+}
+
+void Application::saveUIState(const std::string& path) {
+    using json = nlohmann::json;
+
+    json root;
+    {
+        std::ifstream f(path);
+        if (f) { try { root = json::parse(f); } catch (...) {} }
+    }
+
+    json ui;
+    ui["show_screen"]      = showScreen_;
+    ui["show_terminal"]    = showTerminal_;
+    ui["show_cpu_state"]   = showCpuState_;
+    ui["show_disasm"]      = showDisasm_;
+    ui["show_mem_view"]    = showMemView_;
+    ui["show_breakpoints"] = showBreakpoints_;
+    ui["show_watchpoints"] = showWatchpoints_;
+    ui["show_designer"]    = showDesigner_;
+    ui["disasm_follow_pc"] = disasmFollowPC_;
+    ui["mem_follow_pc"]    = memViewFollowPC_;
+    ui["allow_rom_edit"]   = allowRomEdit_;
+
+    json devPanels = json::object();
+    for (const auto& e : machine_.bus().devices()) {
+        auto it = devicePanelVisible_.find(e.device);
+        if (it != devicePanelVisible_.end())
+            devPanels[e.label] = it->second;
+    }
+    ui["device_panels"] = devPanels;
+
+    json periphPanels = json::object();
+    for (auto* p : peripherals_) {
+        auto it = peripheralPanelVisible_.find(p);
+        if (it != peripheralPanelVisible_.end())
+            periphPanels[p->peripheralName()] = it->second;
+    }
+    ui["peripheral_panels"] = periphPanels;
+
+    json bpArray = json::array();
+    for (uint16_t addr : breakpoints_)
+        bpArray.push_back(addr);
+    ui["breakpoints"] = bpArray;
+
+    json wpArray = json::array();
+    for (const auto& wp : watchpoints_) {
+        json w;
+        w["addr"]     = wp.addr;
+        w["on_read"]  = wp.onRead;
+        w["on_write"] = wp.onWrite;
+        wpArray.push_back(w);
+    }
+    ui["watchpoints"] = wpArray;
+
+    root["ui"] = ui;
+    std::ofstream f(path);
+    if (f) f << root.dump(2);
+}
+
+void Application::loadUIState(const std::string& path) {
+    using json = nlohmann::json;
+
+    json root;
+    {
+        std::ifstream f(path);
+        if (!f) return;
+        try { root = json::parse(f); } catch (...) { return; }
+    }
+    if (!root.contains("ui")) return;
+    const json& ui = root["ui"];
+
+    showScreen_      = ui.value("show_screen",      showScreen_);
+    showTerminal_    = ui.value("show_terminal",     showTerminal_);
+    showCpuState_    = ui.value("show_cpu_state",    showCpuState_);
+    showDisasm_      = ui.value("show_disasm",       showDisasm_);
+    showMemView_     = ui.value("show_mem_view",     showMemView_);
+    showBreakpoints_ = ui.value("show_breakpoints",  showBreakpoints_);
+    showWatchpoints_ = ui.value("show_watchpoints",  showWatchpoints_);
+    showDesigner_    = ui.value("show_designer",     showDesigner_);
+    disasmFollowPC_  = ui.value("disasm_follow_pc",  disasmFollowPC_);
+    memViewFollowPC_ = ui.value("mem_follow_pc",     memViewFollowPC_);
+    allowRomEdit_    = ui.value("allow_rom_edit",    allowRomEdit_);
+
+    if (ui.contains("device_panels") && ui["device_panels"].is_object()) {
+        for (const auto& e : machine_.bus().devices()) {
+            const auto& dp = ui["device_panels"];
+            if (dp.contains(e.label))
+                devicePanelVisible_[e.device] = dp[e.label].get<bool>();
+        }
+    }
+
+    if (ui.contains("peripheral_panels") && ui["peripheral_panels"].is_object()) {
+        const auto& pp = ui["peripheral_panels"];
+        for (auto* p : peripherals_) {
+            if (pp.contains(p->peripheralName()))
+                peripheralPanelVisible_[p] = pp[p->peripheralName()].get<bool>();
+        }
+    }
+
+    if (ui.contains("breakpoints") && ui["breakpoints"].is_array()) {
+        for (const auto& bp : ui["breakpoints"])
+            breakpoints_.insert(bp.get<uint16_t>());
+    }
+
+    if (ui.contains("watchpoints") && ui["watchpoints"].is_array()) {
+        for (const auto& wp : ui["watchpoints"]) {
+            Watchpoint w;
+            w.addr    = wp.value("addr",     uint16_t(0));
+            w.onRead  = wp.value("on_read",  true);
+            w.onWrite = wp.value("on_write", true);
+            watchpoints_.push_back(w);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

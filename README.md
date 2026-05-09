@@ -263,7 +263,7 @@ Device instances are owned by `Machine`.  The default map is:
 - [x] **Zilog Z80 CPU** — full instruction set (unprefixed + CB/ED/DD/FD/DDCB/FDCB prefixes), alternate registers, IX/IY indexed, IM 0/1/2, EI delay, NMI at `$0066`
 - [x] **ZX Spectrum 48K preset** — ULA display (256×192 + border), 16-colour pixel+attribute rendering, flash, 50 Hz frame IRQ, 8×5 keyboard matrix, border colour via port `$FE`
 - [x] **Apple IIe preset** — WDC 65C02 @ ~1 MHz; 48 KB RAM; `AppleIIIO` soft-switch dispatcher; `AppleIIVideo` text/hi-res framebuffer with embedded font and green phosphor palette; SDL keyboard → Apple II ASCII; 12/16/32 KB ROM auto-detection
-- [x] **Session persistence** — machine config auto-saved on exit and auto-loaded on startup via `SDL_GetPrefPath`; last-used ROM paths and address map are restored without a manual save step
+- [x] **Session persistence** — machine config, all panel open/closed states, per-device panel visibility, follow-PC toggles, ROM edit toggle, breakpoints, and watchpoints are all auto-saved on exit and restored on startup via `SDL_GetPrefPath`; `imgui_layout.ini` stored alongside `last_session.json` in the OS preferences directory
 - [x] **File → New Machine** — blank-slate reset to default address map; clears active preset
 - [x] **Preset-scoped device clocking** — only active preset's chips are clocked/reset/shown in panels
 - [ ] C128 MMU model (configurable bank sizes, multi-region, hardware-accurate)
