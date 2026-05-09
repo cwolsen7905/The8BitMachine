@@ -9,6 +9,10 @@ Releases are tagged on the `main` branch; active development happens on `dev`.
 
 ## [Unreleased]
 
+---
+
+## [0.33.3] - 2026-05-08
+
 ### Added
 - **Cross-platform build support** — replaced macOS-only `FileDialog.mm` (NSOpenPanel/ObjC++) with a single `FileDialog.cpp` backed by [nativefiledialog-extended](https://github.com/btzy/nativefiledialog-extended) v1.2.1 (fetched via CMake FetchContent); supports macOS (AppKit), Linux (GTK3/portal), and Windows (IFileOpenDialog) behind a uniform API; `OBJCXX` language no longer required; Linux prerequisites: `libsdl2-dev libsdl2-image-dev libgtk-3-dev`; Windows prerequisites: vcpkg `sdl2:x64-windows sdl2-image:x64-windows`
 - **GitHub Actions release workflow** — `.github/workflows/release.yml`; triggers on `v*` tag pushes; matrix build across `macos-latest`, `ubuntu-latest`, and `windows-latest`; produces `the-8-bit-machine-<version>-macOS/Linux/Windows.zip` artifacts and automatically creates a GitHub Release with all three zips attached as public download assets; FetchContent and vcpkg packages cached per `CMakeLists.txt` hash; `workflow_dispatch` available for manual testing on any branch

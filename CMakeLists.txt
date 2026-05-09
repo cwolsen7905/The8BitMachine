@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(the-8-bit-machine VERSION 0.1.0 LANGUAGES CXX)
+project(the-8-bit-machine VERSION 0.33.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -141,8 +141,8 @@ if(APPLE)
         MACOSX_BUNDLE_INFO_PLIST           "${CMAKE_SOURCE_DIR}/Info.plist.in"
         MACOSX_BUNDLE_BUNDLE_NAME          "The 8-Bit Machine"
         MACOSX_BUNDLE_GUI_IDENTIFIER       "com.the8bitmachine.app"
-        MACOSX_BUNDLE_BUNDLE_VERSION       "0.30.0"
-        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.30.0"
+        MACOSX_BUNDLE_BUNDLE_VERSION       "0.33.3"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.33.3"
     )
 elseif(WIN32)
     add_executable(${PROJECT_NAME} WIN32 ${SOURCES})
