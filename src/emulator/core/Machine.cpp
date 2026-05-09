@@ -69,6 +69,12 @@ MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
     if (!charRom)
         return { false, "Cannot load char ROM: " + charPath };
 
+    // Warp load trap at KERNAL ILOAD entry ($F533, offset $1533 within $E000 ROM).
+    // Registered BEFORE the $E000-$FFFF SwitchableRegion so it wins on first-match.
+    // When inactive the real ROM byte is returned, making this transparent.
+    warpLoadTrap_.setFallback(kernal->read(0x1533));
+    bus_.addDevice(0xF533, 0xF533, &warpLoadTrap_, "Warp Load Trap $F533");
+
     // --- Three switchable regions — registered on bus BEFORE catch-all RAM ---
     // $A000–$BFFF: option 0=RAM, 1=BASIC ROM
     SwitchableRegion* regionA = mountSwitchableRegion(
@@ -88,6 +94,11 @@ MachineConfigResult Machine::buildC64Preset(const std::string& kernalPath,
         0xE000, 0xFFFF, "KERNAL/RAM $E000-$FFFF");
     regionE->addOption(&ram_,   "RAM");
     regionE->addOption(kernal,  "KERNAL ROM");
+
+    // $8000–$9FFF cartridge ROML slot — always present; falls through to RAM when disabled
+    epyxFastLoad_.setRam(&ram_);
+    bus_.addDevice(0x8000, 0x9FFF, &epyxFastLoad_, "Cartridge ROML $8000-$9FFF");
+    c64IOSpace_.setCartridge(&epyxFastLoad_);
 
     // $0000–$FFFF catch-all RAM
     bus_.addDevice(0x0000, 0xFFFF, &ram_, "RAM $0000-$FFFF");
@@ -317,7 +328,14 @@ void Machine::clearForPreset() {
     bus_.clearDevices();
     dynamicDevices_.clear();
     activeFixedDevices_.clear();
+    epyxFastLoad_.eject();
+    c64IOSpace_.setCartridge(nullptr);
+    warpLoadTrap_.setActive(false);
+    warpLoadTrap_.onActivate_ = nullptr;
 }
+
+void Machine::enableWarpLoad()  { warpLoadTrap_.setActive(true); }
+void Machine::disableWarpLoad() { warpLoadTrap_.setActive(false); }
 
 ROM* Machine::loadROM(const std::string& label, const std::string& filePath) {
     auto rom = std::make_unique<ROM>(label);
@@ -618,8 +636,9 @@ const char* Machine::idForDevice(const IBusDevice* dev) const {
     if (dev == &ula_)          return "ula";
     if (dev == &appleIIVideo_) return "apple2e_video";
     if (dev == &appleIIIO_)    return "apple2e_io";
-    if (dev == &c64IOSpace_)   return "c64_io_space";
-    if (dev == nullptr)      return "char_out";
+    if (dev == &c64IOSpace_)    return "c64_io_space";
+    if (dev == &epyxFastLoad_)  return "epyx_fastload";
+    if (dev == nullptr)         return "char_out";
     for (const auto& d : dynamicDevices_) {
         if (d.get() != dev) continue;
         if (dynamic_cast<const ROM*>(dev))              return "rom";
@@ -640,8 +659,9 @@ IBusDevice* Machine::deviceForId(const std::string& id) {
     if (id == "ula")           return &ula_;
     if (id == "apple2e_video") return &appleIIVideo_;
     if (id == "apple2e_io")    return &appleIIIO_;
-    if (id == "c64_io_space")  return &c64IOSpace_;
-    if (id == "char_out")     return nullptr;
+    if (id == "c64_io_space")   return &c64IOSpace_;
+    if (id == "epyx_fastload")  return &epyxFastLoad_;
+    if (id == "char_out")       return nullptr;
     return nullptr;
 }
 

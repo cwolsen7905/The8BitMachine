@@ -6,6 +6,15 @@ uint8_t C64IOSpace::read(uint16_t offset) const {
     else if (offset < 0xC00) return vic_ ? vic_->readColorRam(offset - 0x800) : 0xFF;
     else if (offset < 0xD00) return cia1_ ? cia1_->read(offset & 0x0F)  : 0xFF;
     else if (offset < 0xE00) return cia2_ ? cia2_->read(offset & 0x0F)  : 0xFF;
+    else if (offset < 0xF00) {
+        // IO1 ($DE00–$DEFF): re-arms Epyx capacitor; returns $00
+        if (cart_) cart_->triggerIO1Read();
+        return 0x00;
+    }
+    else if (offset < 0x1000) {
+        // IO2 ($DF00–$DFFF): mirrors last 256 bytes of Epyx ROM
+        if (cart_) return cart_->readIO2(static_cast<uint8_t>(offset & 0xFF));
+    }
     return 0xFF;
 }
 

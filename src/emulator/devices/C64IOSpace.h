@@ -2,6 +2,7 @@
 
 #include "emulator/core/IBusDevice.h"
 #include "emulator/devices/CIA6526.h"
+#include "emulator/devices/EpyxFastLoad.h"
 #include "emulator/devices/SID6581.h"
 #include "emulator/devices/VIC6566.h"
 #include <cstdint>
@@ -19,12 +20,15 @@
 //   $800–$BFF  Colour RAM (4-bit, stub — reads $0F, writes ignored)
 //   $C00–$CFF  CIA1       (offset & $0F passed to chip)
 //   $D00–$DFF  CIA2       (offset & $0F passed to chip)
-//   $E00–$FFF  Open bus   ($FF)
+//   $E00–$EFF  IO1 — Epyx FastLoad capacitor trigger (or open bus $00)
+//   $F00–$FFF  IO2 — Epyx FastLoad ROM last page    (or open bus $FF)
 // ---------------------------------------------------------------------------
 class C64IOSpace : public IBusDevice {
 public:
     C64IOSpace(VIC6566* vic, SID6581* sid, CIA6526* cia1, CIA6526* cia2)
         : vic_(vic), sid_(sid), cia1_(cia1), cia2_(cia2) {}
+
+    void setCartridge(EpyxFastLoad* cart) { cart_ = cart; }
 
     const char* deviceName() const override { return "C64 I/O Space"; }
     void        reset()      override {}   // each chip is reset by Machine::reset()
@@ -43,8 +47,9 @@ public:
     }
 
 private:
-    VIC6566* vic_;
-    SID6581* sid_;
-    CIA6526* cia1_;
-    CIA6526* cia2_;
+    VIC6566*       vic_;
+    SID6581*       sid_;
+    CIA6526*       cia1_;
+    CIA6526*       cia2_;
+    EpyxFastLoad*  cart_ = nullptr;
 };

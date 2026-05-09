@@ -2,8 +2,14 @@
 set -e
 
 # ---------------------------------------------------------------------------
-# Prerequisites (macOS):
-#   brew install cmake sdl2 cc65
+# Prerequisites
+#   macOS:  brew install cmake sdl2 sdl2_image cc65
+#   Linux:  apt install cmake libsdl2-dev libsdl2-image-dev libgtk-3-dev cc65
+#           (GTK3 is required by nativefiledialog-extended for file dialogs)
+#
+# Windows: run CMake directly — this script is bash-only
+#   cmake -B build -DCMAKE_BUILD_TYPE=Debug
+#   cmake --build build --parallel
 # ---------------------------------------------------------------------------
 
 BUILD_TYPE=${1:-Debug}

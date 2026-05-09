@@ -183,7 +183,7 @@ void SID6581::generateSamples(float* out, int frames, float sampleRate) {
     uint16_t fcReg = (static_cast<uint16_t>(regs[REG_FC_HI]) << 3)
                    | (regs[REG_FC_LO] & 0x07);
     float fcHz = 30.0f + fcReg * (12000.0f - 30.0f) / 2047.0f;
-    float F    = 2.0f * std::sin(static_cast<float>(M_PI) * fcHz / sampleRate);
+    float F    = 2.0f * std::sin(3.14159265358979323846f * fcHz / sampleRate);
     F = std::min(F, 1.5f);  // clamp for filter stability
 
     // damping: res=0 → 2.0 (no resonance), res=15 → 0.1 (sharp peak)

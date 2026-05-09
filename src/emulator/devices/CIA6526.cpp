@@ -192,6 +192,7 @@ uint8_t CIA6526::read(uint16_t offset) const {
             // Removed hack simulating ack when CLK high
 
             uint8_t val = out | in;
+            val &= joystickA_;   // Joy 2 on C64: bits 0-4 active-low
             if (!iecDevices_.empty() && val != iecLastReadPRA_) {
                 iecLastReadPRA_ = val;
                 char buf[64];
@@ -211,6 +212,7 @@ uint8_t CIA6526::read(uint16_t offset) const {
             for (int col = 0; col < 8; ++col)
                 if (!(pra_ & (1 << col)))
                     result &= keyMatrix_[col];
+            result &= joystickB_;  // Joy 1 on C64: bits 0-4 active-low
             return result;
         }
         case REG_DDRA: return ddra_;
@@ -604,6 +606,41 @@ void CIA6526::drawPanel(const char* title, bool* open) {
         }
         ImGui::Separator();
         ImGui::TextDisabled("* = pressed   yellow col = KERNAL scanning");
+    }
+
+    if (joystickPorts_ && ImGui::CollapsingHeader("Joysticks", ImGuiTreeNodeFlags_DefaultOpen)) {
+        // Draw a D-pad for one joystick port; updates state each frame via IsItemActive().
+        auto drawPad = [](const char* id, const char* label, uint8_t& state) {
+            const ImVec2 sz{40, 22};
+            state = 0xFF;
+            ImGui::PushID(id);
+            ImGui::Text("%s", label);
+
+            ImGui::BeginGroup();
+            ImGui::Dummy(sz); ImGui::SameLine();
+            ImGui::Button("^^", sz); if (ImGui::IsItemActive()) state &= ~(1 << 0);
+
+            ImGui::Button("<<", sz); if (ImGui::IsItemActive()) state &= ~(1 << 2);
+            ImGui::SameLine(); ImGui::Dummy(sz); ImGui::SameLine();
+            ImGui::Button(">>", sz); if (ImGui::IsItemActive()) state &= ~(1 << 3);
+
+            ImGui::Dummy(sz); ImGui::SameLine();
+            ImGui::Button("vv", sz); if (ImGui::IsItemActive()) state &= ~(1 << 1);
+
+            ImGui::Dummy(sz); ImGui::SameLine();
+            ImGui::Button("FIRE", sz); if (ImGui::IsItemActive()) state &= ~(1 << 4);
+            ImGui::EndGroup();
+
+            ImGui::PopID();
+        };
+
+        ImGui::BeginGroup();
+        drawPad("joy1", "Joy 1 (Port B)", joystickB_);
+        ImGui::EndGroup();
+        ImGui::SameLine(0, 24);
+        ImGui::BeginGroup();
+        drawPad("joy2", "Joy 2 (Port A)", joystickA_);
+        ImGui::EndGroup();
     }
 
     if (!iecDevices_.empty() && ImGui::CollapsingHeader("IEC Log", ImGuiTreeNodeFlags_DefaultOpen)) {

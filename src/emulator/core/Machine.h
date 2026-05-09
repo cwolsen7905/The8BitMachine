@@ -2,6 +2,7 @@
 
 #include "emulator/core/Bus.h"
 #include "emulator/core/IHasPanel.h"
+#include "emulator/core/IBusDevice.h"
 #include "emulator/core/ICPU.h"
 #include "emulator/devices/CIA6526.h"
 #include "emulator/devices/BankedMemory.h"
@@ -19,6 +20,7 @@
 #include "emulator/cpu/CPU8502.h"
 #include "emulator/cpu/CPU65C02.h"
 #include "emulator/cpu/CPUZ80.h"
+#include "emulator/devices/EpyxFastLoad.h"
 #include "emulator/devices/Memory.h"
 
 #include "emulator/core/IKeyMapper.h"
@@ -27,6 +29,38 @@
 #include <memory>
 #include <string>
 #include <vector>
+
+// ---------------------------------------------------------------------------
+// WarpLoadTrap — single-address IBusDevice registered at the KERNAL ILOAD
+// entry point ($F533).  When active it fires onActivate_ and returns $60
+// (RTS) so the CPU returns from LOAD without touching the IEC bus.
+// When inactive it returns kernalFallback_ (the real ROM byte), making the
+// device transparent to normal KERNAL operation.
+// ---------------------------------------------------------------------------
+class WarpLoadTrap : public IBusDevice {
+public:
+    const char* deviceName() const override { return "Warp Load"; }
+    void        reset()            override {}
+    void        clock()            override {}
+    uint8_t     read(uint16_t)     const override {
+        if (active_) {
+            if (onActivate_) onActivate_();
+            return 0x60;  // RTS
+        }
+        return kernalFallback_;
+    }
+    void write(uint16_t, uint8_t)  override {}
+
+    void setActive(bool a)       { active_ = a; }
+    void setFallback(uint8_t b)  { kernalFallback_ = b; }
+    bool isActive()        const { return active_; }
+
+    mutable std::function<void()> onActivate_;
+
+private:
+    bool    active_          = false;
+    uint8_t kernalFallback_  = 0xFF;
+};
 
 // Active screen framebuffer descriptor — returned by Machine::screenInfo()
 struct ScreenInfo {
@@ -84,8 +118,17 @@ public:
     ULA&          ula()          { return ula_; }
     AppleIIVideo& appleIIVideo() { return appleIIVideo_; }
     AppleIIIO&    appleIIIO()    { return appleIIIO_; }
-    CPU6510& cpu6510(){ return cpu6510_; }
-    CPUZ80&  cpuZ80() { return cpuZ80_; }
+    CPU6510&       cpu6510()       { return cpu6510_; }
+    CPUZ80&        cpuZ80()        { return cpuZ80_; }
+    C64IOSpace&    c64IOSpace()    { return c64IOSpace_; }
+    EpyxFastLoad&  epyxFastLoad()  { return epyxFastLoad_; }
+    WarpLoadTrap&  warpLoadTrap()  { return warpLoadTrap_; }
+
+    // Enable warp load intercept (activates the trap registered in buildC64Preset).
+    // Call after mounting a drive image; disable on eject.
+    void enableWarpLoad();
+    void disableWarpLoad();
+    bool isWarpLoadActive() const { return warpLoadTrap_.isActive(); }
 
     const CIA6526& cia1() const { return cia1_; }
     const VIC6566& vic()  const { return vic_;  }
@@ -210,7 +253,9 @@ private:
     ULA          ula_;
     AppleIIVideo appleIIVideo_;
     AppleIIIO    appleIIIO_;
-    C64IOSpace   c64IOSpace_;  // pre-wired to the four fixed chips above
+    C64IOSpace   c64IOSpace_;   // pre-wired to the four fixed chips above
+    EpyxFastLoad epyxFastLoad_; // cartridge slot — wired into bus by buildC64Preset
+    WarpLoadTrap warpLoadTrap_; // KERNAL ILOAD intercept — wired into bus by buildC64Preset
 
     CPU6510  cpu6510_;
     CPU8502  cpu8502_;

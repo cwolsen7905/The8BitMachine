@@ -14,7 +14,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ---
 
-## Current State  (v0.31.0)
+## Current State  (v0.33.3)
 
 ### Machine Designer
 - **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and `statusLine()` for the designer panel. Devices that expose an ImGui debug panel also implement the separate **`IHasPanel`** interface (`drawPanel()`), keeping UI knowledge out of the core device contract
@@ -64,7 +64,7 @@ Zilog Z80:
 - **Per-device panels** (View menu) — each chip that implements `IHasPanel` gets its own dockable window; CIA shows timers/ICR/TOD/ports, VIC shows raster/colours/control, SID shows voices/filter/volume; panels are listed dynamically based on what is mounted; keyboard-owning devices (CIA1, ULA) include a collapsible **Keyboard Matrix** section with a clickable grid for injecting key presses
 - **Machine Designer panel** (View menu) — interactive address map: click Start/End addresses to edit inline (invalid values stay red, Tab commits like Enter, clicking away persists red so you can re-enter), drag `=` handle to reorder priority, Sort by Address, Reset to Defaults; validation highlights unreachable entries (orange) and invalid ranges (red), warns when no catch-all entry is present; **Contained Devices** section lists chips embedded inside container devices (VIC/SID/CIA inside C64IOSpace) with live computed addresses
 - **File → New Machine** — resets to a blank default map (MOS 8502, VIC+SID+CIA1+CIA2, 64 KB RAM); clears any active preset and stops the emulator
-- **ROM loading** (File → Load ROM) — native macOS file dialog; supports raw `.bin` and Commodore `.prg`; resets CPU and jumps disassembler to load address
+- **ROM loading** (File → Load ROM) — native file dialog (macOS, Linux, Windows); supports raw `.bin` and Commodore `.prg`; resets CPU and jumps disassembler to load address
 - **Keyboard capture** — click the Screen panel to direct SDL key events to `Machine::keyEvent()`; each preset wires its own handler (C64 → CIA1 matrix, Spectrum → ULA matrix); Escape calls `Machine::clearKeys()` and releases capture; generic machines receive no key events until a handler is wired
 - **Machine config save / load** (File → Save / Load Machine Config) — persists the address-space wiring as a JSON file so machines can be recalled and shared; `cycles_per_frame` is written/read so emulator speed is restored automatically
 - **Bundled JSON presets** (File → Load Preset) — `presets/` folder next to the executable is scanned at startup; each `.json` file appears as a submenu entry; a generic ROM picker dialog collects the required ROM images and builds the machine; C64 preset auto-sets ~1 MHz clock speed
@@ -83,6 +83,9 @@ Zilog Z80:
 - **Apple IIe preset** — `presets/apple2e.json`; ROM picker auto-detects 12 KB, 16 KB, or 32 KB ROM images and mounts them at the correct address (`$D000` or `$C000`); 48 KB RAM at `$0000–$BFFF`; WDC 65C02 CPU at ~1 MHz
 - **AppleIIVideo** — 280×192 green-phosphor framebuffer; text mode: 40×24 characters from an embedded 128-character ROM with inverse and flash rendering; hi-res mode: monochrome 280×192 bitmap; mixed mode: bottom 4 rows text; page 1/2 soft switches
 - **AppleIIIO** — keyboard latch at `$C000`, strobe clear at `$C010`, soft switches at `$C050–$C057` (GRAPHICS/TEXT/FULLSCR/MIXED/PAGE1/PAGE2/LORES/HIRES); SDL key events translated to Apple II ASCII including shift and control
+- **Drive 1541** — MOS 1541 software IEC state machine; mounts `.d64` and `.t64` images via Peripherals menu; debug panel shows bus line state, transfer log, and directory listing; parses full CBM DOS filenames including drive prefix (`0:`) and type/mode suffix (`,P,R`); channel 15 error/status channel always open (returns `73,CBM DOS V2.6 1541` at reset, `00,OK` or `62,FILE NOT FOUND` after OPEN)
+- **Warp load** — opt-in toggle in the Drive panel (off by default); when enabled and an image is mounted, a `WarpLoadTrap` intercepts the KERNAL ILOAD entry (`$F533`) and injects file bytes directly into RAM without IEC bus activity; standard IEC loading is used when the toggle is off; `[Warp] Loaded …` confirmation printed to terminal when active
+- **Epyx FastLoad cartridge** — 8 KB ROM at `$8000–$9FFF` with capacitor-based 512-cycle enable window; IO1/IO2 ranges routed through `C64IOSpace`; mount `.bin` image via Peripherals menu
 - **CHAR_OUT port at `$F000`** — CPU writes here appear in the Terminal panel (line-buffered; flushed on LF)
 - **F10 instruction step** — runs the CPU until the current instruction completes
 - **Configurable clock speed** — Emulator → Speed presets: ~60 kHz (debug), ~500 kHz, ~1 MHz, ~2 MHz; effective MHz shown in the menu bar
@@ -98,20 +101,45 @@ Zilog Z80:
 
 ## Prerequisites
 
+### macOS
+
 | Tool | Install |
 |------|---------|
 | CMake ≥ 3.20 | `brew install cmake` |
 | SDL2 | `brew install sdl2` |
-| cc65 (ca65/ld65) | `brew install cc65` |
-| C++17 compiler | Xcode Command Line Tools (`xcode-select --install`) |
+| SDL2_image | `brew install sdl2_image` |
+| cc65 (ca65/ld65) | `brew install cc65` *(optional — only for ROM assembly)* |
+| C++17 compiler | `xcode-select --install` |
 
-Dear ImGui (docking branch, v1.91.6) is fetched automatically by CMake.
+### Linux (Debian/Ubuntu)
 
-cc65 is only needed to rebuild the 6502 assembly ROMs from source. The build script skips the assembly step with a warning if cc65 is not installed.
+```bash
+sudo apt install cmake build-essential libsdl2-dev libsdl2-image-dev libgtk-3-dev
+# optional — only needed to rebuild 6502 ROM sources:
+sudo apt install cc65
+```
+
+GTK3 (`libgtk-3-dev`) is required by nativefiledialog-extended for the native file-open/save dialogs.
+
+### Windows
+
+Install prerequisites via [vcpkg](https://vcpkg.io) or [Chocolatey](https://chocolatey.org):
+
+```powershell
+# vcpkg (recommended)
+vcpkg install sdl2 sdl2-image
+# then configure CMake with -DCMAKE_TOOLCHAIN_FILE=<vcpkg root>/scripts/buildsystems/vcpkg.cmake
+```
+
+Dear ImGui, nlohmann/json, and nativefiledialog-extended are fetched automatically by CMake — no manual install needed.
+
+cc65 is only needed to rebuild the 6502 assembly ROMs from source. The build skips the assembly step with a warning if cc65 is not found.
 
 ---
 
 ## Building
+
+### macOS / Linux
 
 ```bash
 ./build.sh             # Debug build (default)
@@ -125,7 +153,14 @@ cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build --parallel
 ```
 
-The binary is placed at `build/the-8-bit-machine`.
+### Windows
+
+```powershell
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=<vcpkg root>/scripts/buildsystems/vcpkg.cmake
+cmake --build build --parallel
+```
+
+The binary is placed at `build/the-8-bit-machine` (or `build\Debug\the-8-bit-machine.exe` on Windows).
 
 ---
 
@@ -239,8 +274,10 @@ Device instances are owned by `Machine`.  The default map is:
 
 | Library | Version | Source |
 |---------|---------|--------|
-| [SDL2](https://libsdl.org) | ≥ 2.0.22 | Homebrew |
+| [SDL2](https://libsdl.org) | ≥ 2.0.22 | System package manager |
+| [SDL2_image](https://wiki.libsdl.org/SDL2_image) | ≥ 2.0 | System package manager |
 | [Dear ImGui](https://github.com/ocornut/imgui) | v1.91.6-docking | CMake FetchContent |
-| OpenGL | 3.3 core | System (macOS) |
+| [nativefiledialog-extended](https://github.com/btzy/nativefiledialog-extended) | v1.2.1 | CMake FetchContent |
+| OpenGL | 3.3 core | System |
 | [nlohmann/json](https://github.com/nlohmann/json) | v3.11.3 | CMake FetchContent |
-| [cc65](https://cc65.github.io) (ca65/ld65) | ≥ 2.19 | Homebrew (optional) |
+| [cc65](https://cc65.github.io) (ca65/ld65) | ≥ 2.19 | System package manager (optional) |

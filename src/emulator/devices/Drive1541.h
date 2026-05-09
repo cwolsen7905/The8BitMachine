@@ -4,7 +4,9 @@
 #include "emulator/core/IHasPanel.h"
 #include "emulator/core/IPeripheral.h"
 #include "emulator/devices/D64Image.h"
+#include "emulator/devices/T64Image.h"
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -23,7 +25,7 @@
 //   ATN low  → host is sending a command byte
 //   Byte transfer uses CLK/DATA handshake (CLK high = ready, DATA low = busy)
 //   Commands: LISTEN (0x20+dev), TALK (0x40+dev), OPEN (0x60+ch),
-//             DATA  (0x60+ch),  CLOSE(0x70+ch), UNLISTEN(0x3F), UNTALK(0x5F)
+//             DATA  (0x60+ch),  CLOSE(0xE0+ch), UNLISTEN(0x3F), UNTALK(0x5F)
 // ---------------------------------------------------------------------------
 class Drive1541 : public IIECDevice, public IPeripheral, public IHasPanel {
 public:
@@ -39,7 +41,9 @@ public:
     // IPeripheral
     // -----------------------------------------------------------------------
     const char*        peripheralName() const override;
-    const std::string& mountedImage()   const override { return image_.path(); }
+    const std::string& mountedImage()   const override {
+        return t64_.isLoaded() ? t64_.path() : image_.path();
+    }
     bool               mount(const std::string& path) override;
     void               eject()          override;
     const std::string& mountError()     const override { return mountError_; }
@@ -48,6 +52,15 @@ public:
     // IHasPanel
     // -----------------------------------------------------------------------
     void drawPanel(const char* title, bool* open) override;
+
+    // Returns file data as [lo(loadAddr), hi(loadAddr), data...] for warp load.
+    // name is ASCII (already PETSCII-converted); "*" loads the first PRG.
+    std::vector<uint8_t> loadFile(const std::string& name);
+
+    // Warp load toggle — when true and an image is mounted, LOAD is intercepted
+    // at the KERNAL level without using the IEC bus.  Toggling fires onWarpToggle.
+    bool warpEnabled() const { return warpEnabled_; }
+    std::function<void(bool)> onWarpToggle;
 
     // -----------------------------------------------------------------------
     // Reset IEC state machine without ejecting the disk image.
@@ -67,8 +80,10 @@ private:
     std::vector<uint8_t> getDirectoryData();
     int      deviceNumber_;
     D64Image image_;
+    T64Image t64_;
     std::string mountError_;
     std::string peripheralName_;  // cached "Drive 8 (1541)" string
+    bool        warpEnabled_ = false;
 
     // -----------------------------------------------------------------------
     // IEC line state we are driving (all released / high by default)

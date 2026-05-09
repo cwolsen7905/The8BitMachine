@@ -28,16 +28,19 @@ namespace {
             {
                 { 0x0314, "IRQ-Vec" },
                 { 0x0316, "NMI-Vec" },
+                { 0x0330, "LOAD-Vec"},
                 { 0xFF81, "CINT"    },
                 { 0xFF84, "IOINIT"  },
                 { 0xFF87, "RAMTAS"  },
                 { 0xFF8A, "RESTOR"  },
                 { 0xFF8D, "VECTOR"  },
                 { 0xFFD2, "CHROUT"  },
+                { 0xFFD5, "LOAD"    },
                 { 0xFFE4, "GETIN"   },
                 { 0xFFFA, "NMI"     },
                 { 0xFFFC, "RESET"   },
                 { 0xFFFE, "IRQ"     },
+                { 0xF533, "ILOAD"   },
             }
         },
         {
@@ -271,8 +274,19 @@ void Application::rewirePeripherals(const std::string& presetType) {
     peripheralPanelVisible_.clear();
 
     if (presetType == "c64") {
+        machine_.cia1().enableJoystickPorts();
         machine_.cia2().connectIEC(&drive1541_);
         peripherals_.push_back(&drive1541_);
         peripheralPanelVisible_[&drive1541_] = false;
+
+        drive1541_.onWarpToggle = [this](bool enabled) {
+            if (!drive1541_.mountedImage().empty()) {
+                if (enabled) machine_.enableWarpLoad();
+                else         machine_.disableWarpLoad();
+            }
+        };
+
+        peripherals_.push_back(&machine_.epyxFastLoad());
+        peripheralPanelVisible_[&machine_.epyxFastLoad()] = false;
     }
 }

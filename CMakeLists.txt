@@ -1,8 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(the-8-bit-machine VERSION 0.1.0 LANGUAGES CXX)
-if(APPLE)
-    enable_language(OBJCXX)
-endif()
+project(the-8-bit-machine VERSION 0.33.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -70,6 +67,17 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+# ---------------------------------------------------------------------------
+# nativefiledialog-extended  (cross-platform file dialogs; fetched at configure time)
+# ---------------------------------------------------------------------------
+FetchContent_Declare(
+    nfd
+    GIT_REPOSITORY https://github.com/btzy/nativefiledialog-extended.git
+    GIT_TAG        v1.2.1
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(nfd)
+
 add_library(imgui_lib STATIC
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
@@ -113,6 +121,8 @@ set(SOURCES
     src/emulator/devices/C64KeyMapper.cpp
     src/emulator/devices/CIA6526.cpp
     src/emulator/devices/D64Image.cpp
+    src/emulator/devices/EpyxFastLoad.cpp
+    src/emulator/devices/T64Image.cpp
     src/emulator/devices/Drive1541.cpp
     src/emulator/devices/ULA.cpp
     src/emulator/devices/AppleIIVideo.cpp
@@ -123,9 +133,7 @@ set(SOURCES
     src/emulator/devices/VIC6566.cpp
 )
 
-if(APPLE)
-    list(APPEND SOURCES src/gui/FileDialog.mm)
-endif()
+list(APPEND SOURCES src/gui/FileDialog.cpp)
 
 if(APPLE)
     add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${SOURCES})
@@ -133,14 +141,16 @@ if(APPLE)
         MACOSX_BUNDLE_INFO_PLIST           "${CMAKE_SOURCE_DIR}/Info.plist.in"
         MACOSX_BUNDLE_BUNDLE_NAME          "The 8-Bit Machine"
         MACOSX_BUNDLE_GUI_IDENTIFIER       "com.the8bitmachine.app"
-        MACOSX_BUNDLE_BUNDLE_VERSION       "0.30.0"
-        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.30.0"
+        MACOSX_BUNDLE_BUNDLE_VERSION       "0.33.3"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.33.3"
     )
+elseif(WIN32)
+    add_executable(${PROJECT_NAME} WIN32 ${SOURCES})
 else()
     add_executable(${PROJECT_NAME} ${SOURCES})
 endif()
 target_include_directories(${PROJECT_NAME} PRIVATE src)
-target_link_libraries(${PROJECT_NAME} PRIVATE imgui_lib SDL2::SDL2 SDL2_image::SDL2_image OpenGL::GL nlohmann_json::nlohmann_json)
+target_link_libraries(${PROJECT_NAME} PRIVATE imgui_lib SDL2::SDL2main SDL2::SDL2 SDL2_image::SDL2_image OpenGL::GL nlohmann_json::nlohmann_json nfd)
 
 if(APPLE)
     target_compile_definitions(${PROJECT_NAME} PRIVATE GL_SILENCE_DEPRECATION)

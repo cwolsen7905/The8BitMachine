@@ -3,6 +3,20 @@
 #include <cctype>
 #include <fstream>
 
+// CBM wildcard match: '?' = any one char, '*' = match rest of name.
+static bool cbmMatch(const std::string& pattern, const std::string& name) {
+    size_t pi = 0, ni = 0;
+    while (pi < pattern.size()) {
+        if (pattern[pi] == '*') return true;
+        if (ni >= name.size()) return false;
+        char p = (char)std::tolower((unsigned char)pattern[pi]);
+        char n = (char)std::tolower((unsigned char)name[ni]);
+        if (p != '?' && p != n) return false;
+        ++pi; ++ni;
+    }
+    return ni == name.size();
+}
+
 // ---------------------------------------------------------------------------
 // Geometry
 // ---------------------------------------------------------------------------
@@ -147,14 +161,9 @@ void D64Image::parseDirectory() {
 // ---------------------------------------------------------------------------
 
 std::vector<uint8_t> D64Image::findPRG(const std::string& name) const {
-    std::string lower = name;
-    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-
     for (const auto& de : dir_) {
         if (!de.isPRG()) continue;
-        std::string entLower = de.name;
-        std::transform(entLower.begin(), entLower.end(), entLower.begin(), ::tolower);
-        if (entLower == lower)
+        if (cbmMatch(name, de.name))
             return readFile(de.track, de.sector);
     }
     return {};

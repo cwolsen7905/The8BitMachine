@@ -1,5 +1,6 @@
 #include "Drive1541.h"
 #include <imgui.h>
+#include <algorithm>
 #include <cctype>
 #include <cstring>
 
@@ -13,6 +14,14 @@ static std::string normalizeFileName(std::string name) {
         name = name.substr(1, name.size() - 2);
         trim(name);
     }
+    // Strip CBM DOS drive prefix: "0:" .. "9:"
+    if (name.size() >= 2 && std::isdigit(static_cast<unsigned char>(name[0])) && name[1] == ':')
+        name = name.substr(2);
+    // Strip CBM DOS type/mode suffix: ",P,R" etc. — anything after the first comma
+    auto comma = name.find(',');
+    if (comma != std::string::npos)
+        name = name.substr(0, comma);
+    trim(name);
     return name;
 }
 
@@ -20,7 +29,7 @@ static std::string normalizeFileName(std::string name) {
 // CBM serial secondary-address command nibbles (upper nibble of SA byte)
 // ---------------------------------------------------------------------------
 static constexpr uint8_t SA_DATA  = 0x60;  // 0x60–0x6F: data channel
-static constexpr uint8_t SA_CLOSE = 0x70;  // 0x70–0x7F: close channel
+static constexpr uint8_t SA_CLOSE = 0xE0;  // 0xE0–0xEF: close channel
 static constexpr uint8_t SA_OPEN  = 0xF0;  // 0xF0–0xFF: open channel
 
 // CLK hold time (cycles) before releasing for non-EOI byte.  Must be <200µs.
@@ -45,19 +54,44 @@ const char* Drive1541::peripheralName() const {
     return peripheralName_.c_str();
 }
 
+static bool hasExtension(const std::string& path, const char* ext) {
+    std::string lower = path;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    auto pos = lower.rfind('.');
+    return pos != std::string::npos && lower.substr(pos) == ext;
+}
+
 bool Drive1541::mount(const std::string& path) {
     mountError_.clear();
-    if (!image_.load(path)) {
-        mountError_ = image_.error();
-        return false;
+    if (hasExtension(path, ".t64")) {
+        image_.unload();
+        if (!t64_.load(path)) { mountError_ = t64_.error(); return false; }
+    } else {
+        t64_.unload();
+        if (!image_.load(path)) { mountError_ = image_.error(); return false; }
     }
     return true;
 }
 
 void Drive1541::eject() {
     image_.unload();
+    t64_.unload();
     mountError_.clear();
     reset();
+}
+
+std::vector<uint8_t> Drive1541::loadFile(const std::string& name) {
+    if (t64_.isLoaded()) {
+        if (name == "*" || name.empty()) return t64_.firstPRG();
+        auto data = t64_.findPRG(name);
+        return data.empty() ? t64_.firstPRG() : data;
+    }
+    if (image_.isLoaded()) {
+        if (name == "*" || name.empty()) return image_.firstPRG();
+        auto data = image_.findPRG(name);
+        return data.empty() ? image_.firstPRG() : data;
+    }
+    return {};
 }
 
 void Drive1541::reset() {
@@ -79,55 +113,109 @@ void Drive1541::reset() {
     prevAtn_       = true;
     hostIn_        = { true, true, true };
     releaseAll();
+    // Channel 15 is the 1541 error/status channel — always open, pre-filled with
+    // the DOS version string that a real drive returns after power-on or reset.
+    static const char kDosVersion[] = "73,CBM DOS V2.6 1541,00,00\r";
+    channels_[15].data.assign(kDosVersion, kDosVersion + sizeof(kDosVersion) - 1);
+    channels_[15].pos  = 0;
+    channels_[15].open = true;
     logEvent("IEC reset");
 }
 
 std::vector<uint8_t> Drive1541::getDirectoryData() {
-    std::vector<uint8_t> dir;
-    // Load address 0x0801
-    dir.push_back(0x01);
-    dir.push_back(0x08);
-    // BASIC line: 0 "DISK DIRECTORY"
-    dir.push_back(0x00);
-    dir.push_back(0x00);
-    dir.push_back(0x20);
-    dir.push_back('"');
-    dir.push_back('D');
-    dir.push_back('I');
-    dir.push_back('S');
-    dir.push_back('K');
-    dir.push_back(' ');
-    dir.push_back('D');
-    dir.push_back('I');
-    dir.push_back('R');
-    dir.push_back('E');
-    dir.push_back('C');
-    dir.push_back('T');
-    dir.push_back('O');
-    dir.push_back('R');
-    dir.push_back('Y');
-    dir.push_back('"');
-    dir.push_back(0x00);
-    // Dummy file entry
-    dir.push_back(0x00);
-    dir.push_back(0x00);
-    dir.push_back(0x20);
-    dir.push_back(' ');
-    dir.push_back('"');
-    dir.push_back('T');
-    dir.push_back('E');
-    dir.push_back('S');
-    dir.push_back('T');
-    dir.push_back('"');
-    dir.push_back(' ');
-    dir.push_back('P');
-    dir.push_back('R');
-    dir.push_back('G');
-    dir.push_back(0x00);
-    // End of directory
-    dir.push_back(0x00);
-    dir.push_back(0x00);
-    return dir;
+    // Build a BASIC program representing the disk directory.
+    // Load address = $0801; link pointers are absolute from $0801.
+    // Format mirrors what a real 1541 sends over IEC.
+
+    struct BasicLine {
+        uint16_t lineNum;
+        std::vector<uint8_t> content;
+    };
+    std::vector<BasicLine> lines;
+
+    auto appendStr = [](std::vector<uint8_t>& v, const char* s) {
+        while (*s) v.push_back(static_cast<uint8_t>(*s++));
+    };
+    auto toUpper = [](char c) -> uint8_t {
+        return (c >= 'a' && c <= 'z') ? static_cast<uint8_t>(c - 'a' + 'A')
+                                      : static_cast<uint8_t>(c);
+    };
+    auto addNameField = [&](std::vector<uint8_t>& v, const std::string& name) {
+        v.push_back('"');
+        int written = 0;
+        for (char c : name) { v.push_back(toUpper(c)); ++written; }
+        for (; written < 16; ++written) v.push_back(' ');
+        v.push_back('"');
+    };
+
+    if (image_.isLoaded()) {
+        BasicLine hdr;
+        hdr.lineNum = 0;
+        hdr.content.push_back(0x12);  // reverse-on
+        addNameField(hdr.content, image_.diskName());
+        appendStr(hdr.content, " 00 2A");
+        lines.push_back(std::move(hdr));
+
+        for (const auto& de : image_.directory()) {
+            BasicLine fl;
+            fl.lineNum = de.blocks;
+            addNameField(fl.content, de.name);
+            fl.content.push_back(' ');
+            appendStr(fl.content, de.isPRG() ? "PRG" : "SEQ");
+            lines.push_back(std::move(fl));
+        }
+
+        BasicLine ftr;
+        ftr.lineNum = static_cast<uint16_t>(image_.freeBlocks());
+        appendStr(ftr.content, "BLOCKS FREE.");
+        lines.push_back(std::move(ftr));
+
+    } else if (t64_.isLoaded()) {
+        BasicLine hdr;
+        hdr.lineNum = 0;
+        hdr.content.push_back(0x12);
+        addNameField(hdr.content, t64_.tapeName());
+        appendStr(hdr.content, " T64  ");
+        lines.push_back(std::move(hdr));
+
+        for (const auto& e : t64_.entries()) {
+            if (!e.isPRG()) continue;
+            BasicLine fl;
+            fl.lineNum = 0;
+            addNameField(fl.content, e.name);
+            appendStr(fl.content, " PRG");
+            lines.push_back(std::move(fl));
+        }
+
+        BasicLine ftr;
+        ftr.lineNum = 0;
+        appendStr(ftr.content, "BLOCKS FREE.");
+        lines.push_back(std::move(ftr));
+    }
+
+    if (lines.empty()) return {};
+
+    // Serialize: [load addr][BASIC lines...][0x00 0x00]
+    const uint16_t base = 0x0801;
+    std::vector<uint8_t> out;
+    out.push_back(base & 0xFF);
+    out.push_back(base >> 8);
+
+    uint16_t addr = base;
+    for (const auto& line : lines) {
+        uint16_t lineSize = static_cast<uint16_t>(2 + 2 + line.content.size() + 1);
+        uint16_t next = addr + lineSize;
+        out.push_back(next & 0xFF);
+        out.push_back(next >> 8);
+        out.push_back(line.lineNum & 0xFF);
+        out.push_back(line.lineNum >> 8);
+        for (uint8_t b : line.content) out.push_back(b);
+        out.push_back(0x00);
+        addr = next;
+    }
+    out.push_back(0x00);
+    out.push_back(0x00);
+    return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -370,21 +458,14 @@ void Drive1541::clock() {
             shiftReg_ = txBuf_[txPos_];
             bitCount_ = 0;
             txEOI_ = (txPos_ == txBuf_.size() - 1);
-            if (txEOI_) {
-                // EOI byte: must wait for DATA=1 (host releases frame-ACK from prior
-                // byte) before holding CLK HIGH for the EOI timeout.  Jumping straight
-                // to TalkEOI while DATA is still LOW from the previous frame-ACK causes
-                // TalkEOI to see DATA=0 immediately and misidentify it as the EOI ack
-                // (observed: "EOI ack from C64 after 1 cycles").
-                // TalkWaitHostDataHigh will route to TalkEOI once DATA goes HIGH.
-                talkEoiCycles_ = 0;
-                logEvent("→ TalkWaitHostDataHigh (EOI): wait DATA=1 before EOI hold");
-                state_ = State::TalkWaitHostDataHigh;
-            } else {
-                driven_.clk = false;
-                waitCycles_ = kNormalReadyCycles;
-                state_ = State::TalkNormalReady;
-            }
+            // Both EOI and normal bytes: hold CLK LOW for kNormalReadyCycles so the
+            // KERNAL has time to release DATA (it holds DATA while confirming the device
+            // took CLK).  TalkNormalReady releases CLK HIGH ("ready"), then
+            // TalkWaitHostDataHigh waits for DATA=1, then routes to TalkEOI or TalkSendBit.
+            talkEoiCycles_ = 0;
+            driven_.clk = false;
+            waitCycles_ = kNormalReadyCycles;
+            state_ = State::TalkNormalReady;
         }
         break;
 
@@ -472,6 +553,10 @@ void Drive1541::clock() {
         driven_.clk  = false;
         driven_.data = true;
         if (!data) {
+            // Persist position so re-TALK sessions resume from here.
+            if (channel_ >= 0 && channel_ < 16)
+                channels_[channel_].pos =
+                    channels_[channel_].data.size() - txBuf_.size() + txPos_;
             if (txPos_ < txBuf_.size()) {
                 state_ = State::TalkWaitClkHigh;
             } else {
@@ -568,28 +653,39 @@ void Drive1541::handleListenByte(uint8_t byte) {
 // ---------------------------------------------------------------------------
 
 void Drive1541::openChannel(int ch, const std::string& name) {
-    if (!image_.isLoaded()) {
+    if (ch < 0 || ch >= 16) return;
+
+    // Channel 15 is always open (error/status channel); no file open needed.
+    if (ch == 15) return;
+
+    if (!image_.isLoaded() && !t64_.isLoaded()) {
         logEvent("openChannel: no image mounted");
         return;
     }
-    if (ch < 0 || ch >= 16) return;
 
     std::string normalized = normalizeFileName(name);
     std::vector<uint8_t> data;
 
     if (normalized == "*") {
-        data = image_.firstPRG();
+        data = t64_.isLoaded() ? t64_.firstPRG() : image_.firstPRG();
         if (data.empty())
-            logEvent("openChannel: no PRG file found on disk");
+            logEvent("openChannel: no PRG file found");
+    } else if (!normalized.empty() && normalized[0] == '$') {
+        data = getDirectoryData();
+        if (data.empty())
+            logEvent("openChannel: no image mounted for directory");
     } else {
-        if (!normalized.empty() && normalized[0] == '$') {
-            logEvent("openChannel: directory listing not yet supported");
-            return;
-        }
-        data = image_.findPRG(normalized);
+        data = t64_.isLoaded() ? t64_.findPRG(normalized) : image_.findPRG(normalized);
         if (data.empty())
             logEvent("openChannel: PRG \"" + normalized + "\" not found");
     }
+
+    // Update channel 15 error status.
+    static const char kOK[]       = "00,OK,00,00\r";
+    static const char kNotFound[] = "62,FILE NOT FOUND,00,00\r";
+    const char* status = data.empty() ? kNotFound : kOK;
+    channels_[15].data.assign(status, status + std::strlen(status));
+    channels_[15].pos  = 0;
 
     if (data.empty()) return;
 
@@ -643,9 +739,36 @@ void Drive1541::drawPanel(const char* title, bool* open) {
             }
             ImGui::EndTable();
         }
+    } else if (t64_.isLoaded()) {
+        ImGui::Text("Image : %s", t64_.path().c_str());
+        ImGui::Text("Tape  : %s", t64_.tapeName().c_str());
+        ImGui::Separator();
+
+        if (ImGui::BeginTable("t64dir", 2,
+                ImGuiTableFlags_BordersInner | ImGuiTableFlags_RowBg |
+                ImGuiTableFlags_ScrollY, ImVec2(0, 150))) {
+            ImGui::TableSetupScrollFreeze(0, 1);
+            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 40.f);
+            ImGui::TableHeadersRow();
+            for (const auto& e : t64_.entries()) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(e.name.c_str());
+                ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(e.isPRG() ? "PRG" : "---");
+            }
+            ImGui::EndTable();
+        }
     } else {
         ImGui::TextDisabled("No image mounted");
     }
+
+    ImGui::Spacing();
+    bool prev = warpEnabled_;
+    ImGui::Checkbox("Warp load", &warpEnabled_);
+    if (warpEnabled_ != prev && onWarpToggle) onWarpToggle(warpEnabled_);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Intercept KERNAL LOAD at $F533 and inject\n"
+                          "file bytes directly — no IEC bus activity.");
 
     ImGui::Separator();
     static const char* kStateNames[] = {

@@ -9,7 +9,17 @@ Releases are tagged on the `main` branch; active development happens on `dev`.
 
 ## [Unreleased]
 
+---
+
+## [0.33.3] - 2026-05-08
+
 ### Added
+- **Cross-platform build support** — replaced macOS-only `FileDialog.mm` (NSOpenPanel/ObjC++) with a single `FileDialog.cpp` backed by [nativefiledialog-extended](https://github.com/btzy/nativefiledialog-extended) v1.2.1 (fetched via CMake FetchContent); supports macOS (AppKit), Linux (GTK3/portal), and Windows (IFileOpenDialog) behind a uniform API; `OBJCXX` language no longer required; Linux prerequisites: `libsdl2-dev libsdl2-image-dev libgtk-3-dev`; Windows prerequisites: vcpkg `sdl2:x64-windows sdl2-image:x64-windows`
+- **GitHub Actions release workflow** — `.github/workflows/release.yml`; triggers on `v*` tag pushes; matrix build across `macos-latest`, `ubuntu-latest`, and `windows-latest`; produces `the-8-bit-machine-<version>-macOS/Linux/Windows.zip` artifacts and automatically creates a GitHub Release with all three zips attached as public download assets; FetchContent and vcpkg packages cached per `CMakeLists.txt` hash; `workflow_dispatch` available for manual testing on any branch
+- **Warp load** — when a disk or tape image is mounted on the 1541 drive for a C64 preset, file bytes are injected directly into RAM without touching the IEC bus; implemented as a `WarpLoadTrap` IBusDevice registered at the KERNAL ILOAD entry point (`$F533`); when active the trap fires a callback that reads the filename from KERNAL zero page (`$B7`/`$BB`/`$BC`), looks up the file in the mounted image (with PETSCII→ASCII conversion), copies data to the PRG load address, and sets `$90`/`$AC`–`$AF` so the KERNAL sees a clean successful load; the standard IEC serial path is completely untouched and continues to work when the trap is inactive; a `[Warp] Loaded …` line is printed to the terminal on success
+- **T64 tape image support** — `T64Image` parser (`src/emulator/devices/T64Image.h/.cpp`); `Drive1541::mount()` accepts `.t64` files and routes file lookup through `T64Image`; drive panel shows tape name and a two-column file list when a `.t64` is mounted; `Mount .t64…` entry added to the Peripherals menu
+- **Epyx FastLoad cartridge** — `EpyxFastLoad` (`src/emulator/devices/EpyxFastLoad.h/.cpp`) emulates the 8 KB ROM at `$8000–$9FFF` with capacitor-based enable/disable (512-cycle timeout); re-armed on CPU reset and on any read from `$8000–$9FFF` or IO1 (`$DE00–$DEFF`); IO2 (`$DF00–$DFFF`) always mirrors the last 256 bytes regardless of capacitor state; when ROM is disabled, reads fall through to RAM; `C64IOSpace` updated to call `triggerIO1Read()` / `readIO2()` for the relevant ranges; panel shows ROM path, enabled state, and remaining cycles; registered in `buildC64Preset` and exposed via `Machine::epyxFastLoad()` and the Peripherals menu
+- **Disassembler label additions** — C64 preset now annotates `$0330` as `LOAD-Vec`, `$FFD5` as `LOAD`, and `$F533` as `ILOAD`
 - **VS Code integration** — `.vscode/` directory with three config files: `c_cpp_properties.json` points IntelliSense at `build/compile_commands.json` for accurate include resolution; `tasks.json` provides cmake configure, build (default ⇧⌘B with `$gcc` problem matcher), and roms targets; `launch.json` launches the app via lldb with `cwd` set to `Resources/` so preset paths resolve correctly
 - **`IIECDevice` interface** (`src/emulator/core/IIECDevice.h`) — `IECLines` struct (ATN/CLK/DATA booleans) + `setIECLines()` / `getIECLines()` pure virtuals; CIA6526 connects devices via `connectIEC()` and propagates bus state each cycle
 - **CIA6526 IEC bus wiring** — CIA2 drives ATN (PA3), CLK (PA4), DATA (PA5) onto the IEC bus using correct open-collector polarity; `updateIECInputBits()` computes the wired-AND bus state and feeds CLK-in (PA6) and DATA-in (PA7) back into `$DD00` reads; `connectIEC()` / `disconnectAllIEC()` / `iecDriven()` added; `connectIEC()` guards against duplicate registration
@@ -22,6 +32,8 @@ Releases are tagged on the `main` branch; active development happens on `dev`.
 - **`Machine::setNMICallback()`** — CIA2 `onIRQ` is now wired to the CPU NMI line via `Application::init()`; previously CIA2 interrupts had no path to the CPU
 
 ### Fixed
+- **MSVC: `M_PI` undeclared** — replaced `M_PI` in `SID6581.cpp` with an inline literal; `M_PI` is a POSIX extension unavailable in MSVC without `_USE_MATH_DEFINES`
+- **MSVC: unresolved `main` linker error** — added `SDL2::SDL2main` to link libraries and `WIN32` subsystem flag for Windows targets; SDL2 redefines `main` to `SDL_main` on Windows and requires `SDL2main` to supply the real entry point
 - **Drive1541 IEC ATN acknowledge timing** — the drive previously asserted DATA synchronously on ATN falling edge, causing the KERNAL to detect a "device not present" error (~30 cycles later at `$ED44`) and abort before sending any command bytes; DATA is now held low through the ATN sequence and released only once the host signals ready-to-send
 - **Drive1541 ATN sequencing** — added `AtnWaitClkLow` intermediate state; the drive now waits for CLK to be asserted before watching for a rising edge, preventing a stale CLK-high from triggering `AtnWaitClkHigh` prematurely
 - **Drive1541 `SA_CLOSE` constant** — was `0xE0`, corrected to `0x70`; close-channel commands were never decoded
