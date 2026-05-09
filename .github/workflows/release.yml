@@ -2,7 +2,7 @@ name: Release Build
 
 on:
   push:
-    branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 
 env:
@@ -82,9 +82,19 @@ jobs:
       # -----------------------------------------------------------------------
       # Package
       # -----------------------------------------------------------------------
+      - name: Set artifact name
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          # workflow_dispatch has no tag — fall back to short SHA
+          if [ -z "$VERSION" ] || [ "$VERSION" = "dev" ] || [ "$VERSION" = "main" ]; then
+            VERSION="$(git rev-parse --short HEAD)"
+          fi
+          echo "ARTIFACT=the-8-bit-machine-${VERSION}-${{ matrix.name }}" >> "$GITHUB_ENV"
+
       - name: Package (macOS)
         if: runner.os == 'macOS'
-        run: zip -r the-8-bit-machine-macOS.zip build/the-8-bit-machine.app
+        run: zip -r "${{ env.ARTIFACT }}.zip" build/the-8-bit-machine.app
 
       - name: Package (Linux)
         if: runner.os == 'Linux'
@@ -93,7 +103,7 @@ jobs:
           cp build/the-8-bit-machine dist/
           [ -d build/presets ] && cp -r build/presets dist/
           [ -d build/assets ]  && cp -r build/assets  dist/
-          zip -r the-8-bit-machine-Linux.zip dist/
+          zip -r "${{ env.ARTIFACT }}.zip" dist/
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -117,12 +127,12 @@ jobs:
           Get-ChildItem "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin" `
             -Filter "*.dll" | Copy-Item -Destination dist/
 
-          Compress-Archive -Path dist\* -DestinationPath the-8-bit-machine-Windows.zip
+          Compress-Archive -Path dist\* -DestinationPath "${{ env.ARTIFACT }}.zip"
 
       # -----------------------------------------------------------------------
       # Upload
       # -----------------------------------------------------------------------
       - uses: actions/upload-artifact@v4
         with:
-          name: the-8-bit-machine-${{ matrix.name }}
-          path: the-8-bit-machine-${{ matrix.name }}.zip
+          name: ${{ env.ARTIFACT }}
+          path: ${{ env.ARTIFACT }}.zip
