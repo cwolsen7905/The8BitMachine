@@ -9,10 +9,6 @@ Releases are tagged on the `main` branch; active development happens on `dev`.
 
 ## [Unreleased]
 
----
-
-## [0.33.4] - 2026-05-08
-
 ### Added
 - **Apple Disk II drive** — `DiskII` device (`src/emulator/devices/DiskII.h/.cpp`) emulates the Apple Disk II controller (slot 6, `$C0E0–$C0EF`); mounts `.dsk`/`.do` 140 KB (35 × 16 × 256) DOS 3.3 ordered images; tracks are pre-encoded into 6-and-2 GCR nibble streams on mount using the standard DOS 3.3 physical→logical sector interleave `{0,7,14,6,13,5,12,4,11,3,10,2,9,1,8,15}`; 4-phase stepper motor moves one half-track per adjacent phase activation; all 16 soft switches handled (phase on/off, motor on/off, drive select, Q6/Q7); nibbles served on `$C0EC` (Q6L) when motor is spinning; debug panel shows track, motor state, nibble position, and Q6/Q7; registered in the Apple IIe preset and accessible via the Peripherals menu
 
