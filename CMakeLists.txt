@@ -144,11 +144,13 @@ if(APPLE)
         MACOSX_BUNDLE_BUNDLE_VERSION       "0.30.0"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "0.30.0"
     )
+elseif(WIN32)
+    add_executable(${PROJECT_NAME} WIN32 ${SOURCES})
 else()
     add_executable(${PROJECT_NAME} ${SOURCES})
 endif()
 target_include_directories(${PROJECT_NAME} PRIVATE src)
-target_link_libraries(${PROJECT_NAME} PRIVATE imgui_lib SDL2::SDL2 SDL2_image::SDL2_image OpenGL::GL nlohmann_json::nlohmann_json nfd)
+target_link_libraries(${PROJECT_NAME} PRIVATE imgui_lib SDL2::SDL2main SDL2::SDL2 SDL2_image::SDL2_image OpenGL::GL nlohmann_json::nlohmann_json nfd)
 
 if(APPLE)
     target_compile_definitions(${PROJECT_NAME} PRIVATE GL_SILENCE_DEPRECATION)
