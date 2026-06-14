@@ -55,13 +55,19 @@ bool D64Image::load(const std::string& path) {
 
     // Standard D64: 174848 bytes (35 tracks, no error bytes).
     // Extended: 175531 bytes (+ 683 error bytes).  We accept both.
-    if (sz < 174848) {
+    static constexpr long kStandardD64Size = 174848;  // 683 sectors × 256
+    if (sz < kStandardD64Size) {
         error_ = "File too small to be a .d64 image";
         return false;
     }
 
     data_.resize(static_cast<size_t>(sz));
     f.read(reinterpret_cast<char*>(data_.data()), sz);
+    if (!f) {
+        error_ = "Failed to read .d64 image (file truncated?)";
+        unload();
+        return false;
+    }
 
     parseDirectory();
     return true;

@@ -54,6 +54,11 @@ bool T64Image::load(const std::string& path) {
 
     data_.resize(sz);
     f.read(reinterpret_cast<char*>(data_.data()), static_cast<std::streamsize>(sz));
+    if (!f) {
+        error_ = "Failed to read .t64 image (file truncated?)";
+        unload();
+        return false;
+    }
 
     // Read num_entries from header [34–35] (LE).
     int numSlots = static_cast<int>(data_[34]) | (static_cast<int>(data_[35]) << 8);
@@ -125,7 +130,9 @@ std::vector<uint8_t> T64Image::getFile(int index) const {
     const Entry& e = entries_[index];
     uint32_t size = e.dataSize();
     if (size == 0) return {};
-    if (e.dataOffset + size > data_.size()) return {};
+    // Guard against malformed offsets; written so the addition can never wrap.
+    if (e.dataOffset > data_.size() || size > data_.size() - e.dataOffset)
+        return {};
 
     // Prepend the 2-byte load address so callers get a standard PRG layout.
     std::vector<uint8_t> out;

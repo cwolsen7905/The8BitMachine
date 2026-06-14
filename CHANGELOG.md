@@ -12,6 +12,9 @@ Releases are tagged on the `main` branch; active development happens on `dev`.
 ### Added
 - **Apple Disk II drive** — `DiskII` device (`src/emulator/devices/DiskII.h/.cpp`) emulates the Apple Disk II controller (slot 6, `$C0E0–$C0EF`); mounts `.dsk`/`.do` 140 KB (35 × 16 × 256) DOS 3.3 ordered images; tracks are pre-encoded into 6-and-2 GCR nibble streams on mount using the standard DOS 3.3 physical→logical sector interleave `{0,7,14,6,13,5,12,4,11,3,10,2,9,1,8,15}`; 4-phase stepper motor moves one half-track per adjacent phase activation; all 16 soft switches handled (phase on/off, motor on/off, drive select, Q6/Q7); nibbles served on `$C0EC` (Q6L) when motor is spinning; debug panel shows track, motor state, nibble position, and Q6/Q7; registered in the Apple IIe preset and accessible via the Peripherals menu
 
+### Fixed
+- **Disk/tape/ROM image loading robustness** — `D64Image::load()`, `T64Image::load()`, and `ROM::loadFromFile()` now check the result of the underlying `std::ifstream::read()` and fail cleanly (with an error message and cleared state) instead of silently reporting success on a truncated or unreadable file; `T64Image::getFile()` bounds check rewritten to `dataOffset > size() || dataSize > size() - dataOffset` so a malformed `dataOffset` can no longer overflow `uint32_t` and slip past the guard into an out-of-bounds read; the standard `.d64` size threshold is now a named constant
+
 ---
 
 ## [0.33.3] - 2026-05-08
