@@ -25,6 +25,10 @@ bool ROM::loadFromFile(const std::string& path, size_t skipBytes) {
     size_t dataSize = fileSize - skip;
     data_.resize(dataSize);
     f.read(reinterpret_cast<char*>(data_.data()), static_cast<std::streamsize>(dataSize));
+    if (!f) {
+        data_.clear();
+        return false;
+    }
 
     filePath_ = path;
     return true;

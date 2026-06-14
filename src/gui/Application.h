@@ -71,6 +71,7 @@ private:
     SDL_GLContext      glContext_   = nullptr;
     SDL_AudioDeviceID  audioDevice_ = 0;
     bool               running_     = false;
+    std::string        imguiIniPath_;   // persisted so the char* stays valid for ImGui
     GLuint             screenTex_   = 0;  // active screen texture
     int                screenTexW_  = 0;  // dimensions of the allocated texture
     int                screenTexH_  = 0;
@@ -223,6 +224,11 @@ private:
     bool                     termScrollToBottom_ = false;
     char                     termInput_[256];
 
+    // Modal dialog state ----------------------------------------------------
+    std::string              errorPopupMsg_;     // non-empty → error modal shown
+    std::string              confirmMsg_;        // non-empty → confirm modal shown
+    std::function<void()>    confirmAction_;     // run when confirm is accepted
+
     // Line buffer for characters arriving from the CPU via CHAR_OUT ($F000).
     std::string              ioLineBuf_;
 
@@ -234,6 +240,9 @@ private:
 
     void drawMenuBar();
     void drawPeripheralsMenu();
+    void drawPeripheralEntry(IPeripheral* p);      // one peripheral's menu row
+    void mountDriveImage(IPeripheral* p, const std::string& path);
+    void performWarpLoad();                         // KERNAL ILOAD trap handler
     void rewirePeripherals(const std::string& presetType);
     void drawScreen();
     void drawTerminal();
@@ -255,6 +264,11 @@ private:
 
     void termPrint(const std::string& line);
 
+    // Modal dialogs ---------------------------------------------------------
+    void showError(const std::string& msg);                 // queue an error modal
+    void confirm(const std::string& msg, std::function<void()> onYes);
+    void drawModals();                                      // render queued popups
+
     void emulatorStep();
     void emulatorReset();
     void loadRomDialog();
@@ -262,8 +276,15 @@ private:
     void loadMachineConfigDialog();
     void scanPresets();
     std::string sessionFilePath() const;
+    void        saveUIState(const std::string& path);
+    void        loadUIState(const std::string& path);
     void drawPresetDialog();
     void buildActivePreset();
     void injectC64KeyMatrix(const char* title, bool* open);
     void injectSpectrumKeyMatrix(const char* title, bool* open);
+
+    // Shared key-matrix cell renderer used by both keyboard injectors.
+    enum class KeyCellEvent { None, Pressed, Released };
+    KeyCellEvent drawKeyCell(const char* label, const std::string& idSuffix,
+                             bool held, bool isLast, const ImVec2& size);
 };

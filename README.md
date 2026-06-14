@@ -14,7 +14,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ---
 
-## Current State  (v0.33.3)
+## Current State  (v0.34.0)
 
 ### Machine Designer
 - **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and `statusLine()` for the designer panel. Devices that expose an ImGui debug panel also implement the separate **`IHasPanel`** interface (`drawPanel()`), keeping UI knowledge out of the core device contract
@@ -29,6 +29,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 Shared (`CPU6502Base`):
 - All 56 legal 6502 opcodes, all 13 addressing modes
+- Decimal (BCD) mode for `ADC`/`SBC`, with NMOS flag quirks reproduced (CMOS core gets decimal-correct flags + the extra cycle)
 - Cycle-accurate timing with page-cross and branch penalties
 - IRQ and NMI with full stack push and vector load
 - BRK / RTI with correct flag handling
@@ -57,7 +58,7 @@ Zilog Z80:
 - **Screen panel** — live framebuffer display; dimensions switch dynamically when the preset changes (400×280 for C64/VIC, 352×272 for ZX Spectrum/ULA); C64: 320×200 active area + 40 px border, character mode with embedded font, color RAM, fine scroll; Spectrum: 256×192 active area + 48 px / 40 px border, pixel+attribute rendering with flash, 16-colour palette (normal + bright)
 - **Terminal panel** — green-on-black scrollable log with command input
 - **CPU State panel** — live register and flag display, CIA1 timer status, cycle counter
-- **Disassembler panel** (Debug menu) — live disassembly with Follow PC, Go To address, highlighted current instruction; click any row to toggle a breakpoint (red `●`); emulator halts automatically when PC hits a breakpoint; known addresses annotated with dim `; LABEL` comments (preset-specific KERNAL/ROM entry points + universal `CHAR_OUT`)
+- **Disassembler panel** (Debug menu) — live disassembly with Follow PC, Go To address, highlighted current instruction; click any row to toggle a breakpoint (red `●`); emulator halts automatically when PC hits a breakpoint; known addresses annotated with dim `; LABEL` comments (preset-specific KERNAL/ROM entry points + universal `CHAR_OUT`); decodes the WDC 65C02 opcode set and addressing modes (`($zp)`, `($abs,X)`, `BRA`, `STZ`, `TRB`/`TSB`, `PHX`/`PHY`/`PLX`/`PLY`, …) when the 65C02 is the active CPU, and switches to a full Zilog Z80 decoder (all `CB`/`ED`/`DD`/`FD`/`DDCB`/`FDCB` prefixes, `(IX+d)`/`(IY+d)` operands, block instructions) when the Z80 is active
 - **Breakpoints panel** (Debug menu) — sorted list of all active breakpoints; click to navigate the Disassembler; `x` to delete individually; Clear All; hex input to add a breakpoint by address
 - **Watchpoints** (Debug menu) — break on memory read, write, or both at a specific address; per-entry R/W toggles; terminal prints address and direction when triggered
 - **Memory Viewer panel** (Debug menu) — full hex editor (imgui_memory_editor); click any byte to edit in-place, Follow PC toggle, PC highlighted in yellow, built-in data preview and column options; ROM regions shown in amber, I/O devices in blue, legend bar shows color key; ROM edit toggle allows patching ROM data in-place for debugging
@@ -83,6 +84,7 @@ Zilog Z80:
 - **Apple IIe preset** — `presets/apple2e.json`; ROM picker auto-detects 12 KB, 16 KB, or 32 KB ROM images and mounts them at the correct address (`$D000` or `$C000`); 48 KB RAM at `$0000–$BFFF`; WDC 65C02 CPU at ~1 MHz
 - **AppleIIVideo** — 280×192 green-phosphor framebuffer; text mode: 40×24 characters from an embedded 128-character ROM with inverse and flash rendering; hi-res mode: monochrome 280×192 bitmap; mixed mode: bottom 4 rows text; page 1/2 soft switches
 - **AppleIIIO** — keyboard latch at `$C000`, strobe clear at `$C010`, soft switches at `$C050–$C057` (GRAPHICS/TEXT/FULLSCR/MIXED/PAGE1/PAGE2/LORES/HIRES); SDL key events translated to Apple II ASCII including shift and control
+- **Disk II controller** — `DiskII` emulates the Apple Disk II controller (slot 6, `$C0E0–$C0EF`); mounts `.dsk`/`.do` 140 KB DOS 3.3 ordered images via the Peripherals menu; tracks pre-encoded to 6-and-2 GCR nibble streams using the DOS 3.3 physical→logical sector interleave; 4-phase stepper motor; all 16 soft switches handled; nibbles served on `$C0EC` when motor is spinning; debug panel shows track, motor state, and Q6/Q7
 - **Drive 1541** — MOS 1541 software IEC state machine; mounts `.d64` and `.t64` images via Peripherals menu; debug panel shows bus line state, transfer log, and directory listing; parses full CBM DOS filenames including drive prefix (`0:`) and type/mode suffix (`,P,R`); channel 15 error/status channel always open (returns `73,CBM DOS V2.6 1541` at reset, `00,OK` or `62,FILE NOT FOUND` after OPEN)
 - **Warp load** — opt-in toggle in the Drive panel (off by default); when enabled and an image is mounted, a `WarpLoadTrap` intercepts the KERNAL ILOAD entry (`$F533`) and injects file bytes directly into RAM without IEC bus activity; standard IEC loading is used when the toggle is off; `[Warp] Loaded …` confirmation printed to terminal when active
 - **Epyx FastLoad cartridge** — 8 KB ROM at `$8000–$9FFF` with capacitor-based 512-cycle enable window; IO1/IO2 ranges routed through `C64IOSpace`; mount `.bin` image via Peripherals menu
@@ -263,7 +265,7 @@ Device instances are owned by `Machine`.  The default map is:
 - [x] **Zilog Z80 CPU** — full instruction set (unprefixed + CB/ED/DD/FD/DDCB/FDCB prefixes), alternate registers, IX/IY indexed, IM 0/1/2, EI delay, NMI at `$0066`
 - [x] **ZX Spectrum 48K preset** — ULA display (256×192 + border), 16-colour pixel+attribute rendering, flash, 50 Hz frame IRQ, 8×5 keyboard matrix, border colour via port `$FE`
 - [x] **Apple IIe preset** — WDC 65C02 @ ~1 MHz; 48 KB RAM; `AppleIIIO` soft-switch dispatcher; `AppleIIVideo` text/hi-res framebuffer with embedded font and green phosphor palette; SDL keyboard → Apple II ASCII; 12/16/32 KB ROM auto-detection
-- [x] **Session persistence** — machine config auto-saved on exit and auto-loaded on startup via `SDL_GetPrefPath`; last-used ROM paths and address map are restored without a manual save step
+- [x] **Session persistence** — machine config, all panel open/closed states, per-device panel visibility, follow-PC toggles, ROM edit toggle, breakpoints, and watchpoints are all auto-saved on exit and restored on startup via `SDL_GetPrefPath`; `imgui_layout.ini` stored alongside `last_session.json` in the OS preferences directory
 - [x] **File → New Machine** — blank-slate reset to default address map; clears active preset
 - [x] **Preset-scoped device clocking** — only active preset's chips are clocked/reset/shown in panels
 - [ ] C128 MMU model (configurable bank sizes, multi-region, hardware-accurate)

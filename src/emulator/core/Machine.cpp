@@ -429,6 +429,10 @@ MachineConfigResult Machine::buildAppleIIePreset(const std::string& romPath) {
     // 48 KB RAM $0000-$BFFF
     bus_.addDevice(0x0000, 0xBFFF, &ram_, "RAM $0000-$BFFF");
 
+    // Disk II soft switches $C0E0-$C0EF (slot 6) — must be before AppleIIIO
+    diskII_.reset();
+    bus_.addDevice(0xC0E0, 0xC0EF, &diskII_, "Disk II $C0E0-$C0EF");
+
     // I/O soft switches $C000-$C0FF (first on bus — takes priority over ROM)
     bus_.addDevice(0xC000, 0xC0FF, &appleIIIO_, "Apple IIe I/O $C000-$C0FF");
 

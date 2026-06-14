@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <nlohmann/json.hpp>
 
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_opengl3.h>
@@ -125,7 +126,16 @@ bool Application::init() {
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    io.IniFilename = "imgui_layout.ini";
+    {
+        char* prefPath = SDL_GetPrefPath("the8bitmachine", "The8BitMachine");
+        if (prefPath) {
+            imguiIniPath_ = std::string(prefPath) + "imgui_layout.ini";
+            SDL_free(prefPath);
+        } else {
+            imguiIniPath_ = "imgui_layout.ini";
+        }
+    }
+    io.IniFilename = imguiIniPath_.c_str();
 
     ImGui::StyleColorsDark();
 
@@ -205,6 +215,7 @@ bool Application::init() {
                     cyclesPerFrame_ = result.cyclesPerFrame;
                 cycleCount_ = 0;
             }
+            loadUIState(sessionPath);
         }
     }
 
@@ -237,8 +248,10 @@ void Application::run() {
 
     // Save session on clean exit
     const std::string sessionPath = sessionFilePath();
-    if (!sessionPath.empty())
+    if (!sessionPath.empty()) {
         machine_.saveConfig(sessionPath, cyclesPerFrame_);
+        saveUIState(sessionPath);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -344,6 +357,7 @@ void Application::render() {
     if (showMemView_)      drawMemoryViewer();
     if (showDesigner_) drawMachineDesigner();
     if (showPresetDialog_) drawPresetDialog();
+    drawModals();
 
     // Per-device panels — uses panelDevices() so fixed chips are found even
     // when they are not direct bus entries (e.g. inside C64IOSpace).
@@ -380,14 +394,18 @@ void Application::drawMenuBar() {
     // File ----------------------------------------------------------------
     if (ImGui::BeginMenu("File")) {
         if (ImGui::MenuItem("New Machine")) {
-            emulatorRunning_ = false;
-            machine_.resetAddressMap();
-            machine_.reset();
-            screenTexW_ = 0; screenTexH_ = 0;
-            disasmLabels_.clear();
-            disasmLabels_[Bus::CHAR_OUT_ADDR] = "CHAR_OUT";
-            allowRomEdit_    = false;
-            memColorsDirty_  = true;
+            confirm("Start a new machine? The current address map and CPU "
+                    "state will be cleared.", [this] {
+                emulatorRunning_ = false;
+                machine_.resetAddressMap();
+                machine_.reset();
+                screenTexW_ = 0; screenTexH_ = 0;
+                disasmLabels_.clear();
+                disasmLabels_[Bus::CHAR_OUT_ADDR] = "CHAR_OUT";
+                disasmViewAddr_  = 0x0000;
+                allowRomEdit_    = false;
+                memColorsDirty_  = true;
+            });
         }
 
         ImGui::Separator();
@@ -685,7 +703,64 @@ void Application::drawCpuState() {
 
 void Application::termPrint(const std::string& line) {
     termLines_.push_back(line);
+    // Cap scrollback so a long session can't grow the buffer without bound.
+    static constexpr size_t kMaxTermLines = 5000;
+    if (termLines_.size() > kMaxTermLines)
+        termLines_.erase(termLines_.begin(),
+                         termLines_.begin() + (termLines_.size() - kMaxTermLines));
     termScrollToBottom_ = true;
+}
+
+// ---------------------------------------------------------------------------
+// Modal dialogs
+// ---------------------------------------------------------------------------
+
+void Application::showError(const std::string& msg) {
+    errorPopupMsg_ = msg;
+}
+
+void Application::confirm(const std::string& msg, std::function<void()> onYes) {
+    confirmMsg_    = msg;
+    confirmAction_ = std::move(onYes);
+}
+
+void Application::drawModals() {
+    // Error modal --------------------------------------------------------
+    if (!errorPopupMsg_.empty() && !ImGui::IsPopupOpen("Error##modal"))
+        ImGui::OpenPopup("Error##modal");
+    if (ImGui::BeginPopupModal("Error##modal", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextWrapped("%s", errorPopupMsg_.c_str());
+        ImGui::Separator();
+        if (ImGui::Button("OK", ImVec2(120, 0))) {
+            errorPopupMsg_.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    // Confirm modal ------------------------------------------------------
+    if (!confirmMsg_.empty() && !ImGui::IsPopupOpen("Confirm##modal"))
+        ImGui::OpenPopup("Confirm##modal");
+    if (ImGui::BeginPopupModal("Confirm##modal", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextWrapped("%s", confirmMsg_.c_str());
+        ImGui::Separator();
+        if (ImGui::Button("Yes", ImVec2(120, 0))) {
+            auto action = confirmAction_;
+            confirmMsg_.clear();
+            confirmAction_ = nullptr;
+            ImGui::CloseCurrentPopup();
+            if (action) action();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+            confirmMsg_.clear();
+            confirmAction_ = nullptr;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
 }
 
 void Application::emulatorStep() {
@@ -736,6 +811,7 @@ void Application::loadRomDialog() {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file) {
         termPrint("[ROM] Error: cannot open file.");
+        showError("Could not open ROM file:\n" + path);
         return;
     }
 
@@ -744,6 +820,7 @@ void Application::loadRomDialog() {
 
     if (fileSize == 0) {
         termPrint("[ROM] Error: file is empty.");
+        showError("ROM file is empty:\n" + path);
         return;
     }
 
@@ -761,6 +838,8 @@ void Application::loadRomDialog() {
     if (isPrg) {
         if (fileSize < 3) {
             termPrint("[ROM] Error: PRG file too small (need at least 3 bytes).");
+            showError("PRG file too small — needs at least 3 bytes "
+                      "(2-byte load address + data).");
             return;
         }
         const uint8_t lo = static_cast<uint8_t>(file.get());
@@ -832,6 +911,146 @@ std::string Application::sessionFilePath() const {
     return path;
 }
 
+void Application::saveUIState(const std::string& path) {
+    using json = nlohmann::json;
+
+    json root;
+    {
+        std::ifstream f(path);
+        if (f) { try { root = json::parse(f); } catch (...) {} }
+    }
+
+    json ui;
+    ui["show_screen"]      = showScreen_;
+    ui["show_terminal"]    = showTerminal_;
+    ui["show_cpu_state"]   = showCpuState_;
+    ui["show_disasm"]      = showDisasm_;
+    ui["show_mem_view"]    = showMemView_;
+    ui["show_breakpoints"] = showBreakpoints_;
+    ui["show_watchpoints"] = showWatchpoints_;
+    ui["show_designer"]    = showDesigner_;
+    ui["disasm_follow_pc"] = disasmFollowPC_;
+    ui["mem_follow_pc"]    = memViewFollowPC_;
+    ui["allow_rom_edit"]   = allowRomEdit_;
+
+    json devPanels = json::object();
+    for (const auto& e : machine_.bus().devices()) {
+        auto it = devicePanelVisible_.find(e.device);
+        if (it != devicePanelVisible_.end())
+            devPanels[e.label] = it->second;
+    }
+    ui["device_panels"] = devPanels;
+
+    json periphPanels = json::object();
+    json periphImages = json::object();
+    for (auto* p : peripherals_) {
+        const std::string name = p->peripheralName();
+        auto it = peripheralPanelVisible_.find(p);
+        if (it != peripheralPanelVisible_.end())
+            periphPanels[name] = it->second;
+        if (!p->mountedImage().empty())
+            periphImages[name] = p->mountedImage();
+    }
+    ui["peripheral_panels"]  = periphPanels;
+    ui["peripheral_images"]  = periphImages;
+    ui["drive1541_warp"]     = drive1541_.warpEnabled();
+
+    json bpArray = json::array();
+    for (uint16_t addr : breakpoints_)
+        bpArray.push_back(addr);
+    ui["breakpoints"] = bpArray;
+
+    json wpArray = json::array();
+    for (const auto& wp : watchpoints_) {
+        json w;
+        w["addr"]     = wp.addr;
+        w["on_read"]  = wp.onRead;
+        w["on_write"] = wp.onWrite;
+        wpArray.push_back(w);
+    }
+    ui["watchpoints"] = wpArray;
+
+    root["ui"] = ui;
+    std::ofstream f(path);
+    if (f) f << root.dump(2);
+}
+
+void Application::loadUIState(const std::string& path) {
+    using json = nlohmann::json;
+
+    json root;
+    {
+        std::ifstream f(path);
+        if (!f) return;
+        try { root = json::parse(f); } catch (...) { return; }
+    }
+    if (!root.contains("ui")) return;
+    const json& ui = root["ui"];
+
+    showScreen_      = ui.value("show_screen",      showScreen_);
+    showTerminal_    = ui.value("show_terminal",     showTerminal_);
+    showCpuState_    = ui.value("show_cpu_state",    showCpuState_);
+    showDisasm_      = ui.value("show_disasm",       showDisasm_);
+    showMemView_     = ui.value("show_mem_view",     showMemView_);
+    showBreakpoints_ = ui.value("show_breakpoints",  showBreakpoints_);
+    showWatchpoints_ = ui.value("show_watchpoints",  showWatchpoints_);
+    showDesigner_    = ui.value("show_designer",     showDesigner_);
+    disasmFollowPC_  = ui.value("disasm_follow_pc",  disasmFollowPC_);
+    memViewFollowPC_ = ui.value("mem_follow_pc",     memViewFollowPC_);
+    allowRomEdit_    = ui.value("allow_rom_edit",    allowRomEdit_);
+
+    if (ui.contains("device_panels") && ui["device_panels"].is_object()) {
+        for (const auto& e : machine_.bus().devices()) {
+            const auto& dp = ui["device_panels"];
+            if (dp.contains(e.label))
+                devicePanelVisible_[e.device] = dp[e.label].get<bool>();
+        }
+    }
+
+    if (ui.contains("peripheral_panels") && ui["peripheral_panels"].is_object()) {
+        const auto& pp = ui["peripheral_panels"];
+        for (auto* p : peripherals_) {
+            if (pp.contains(p->peripheralName()))
+                peripheralPanelVisible_[p] = pp[p->peripheralName()].get<bool>();
+        }
+    }
+
+    if (ui.contains("peripheral_images") && ui["peripheral_images"].is_object()) {
+        const auto& pi = ui["peripheral_images"];
+        std::string restoreErrors;
+        for (auto* p : peripherals_) {
+            if (!pi.contains(p->peripheralName())) continue;
+            const auto img = pi[p->peripheralName()].get<std::string>();
+            if (!p->mount(img)) {
+                termPrint(std::string("[Restore] Could not remount ") +
+                          p->peripheralName() + ": " + p->mountError());
+                restoreErrors += std::string(p->peripheralName()) + ": " +
+                                 p->mountError() + "\n";
+            }
+        }
+        if (!restoreErrors.empty())
+            showError("Some saved media could not be remounted:\n\n" + restoreErrors);
+    }
+
+    if (ui.value("drive1541_warp", false))
+        drive1541_.setWarpEnabled(true);
+
+    if (ui.contains("breakpoints") && ui["breakpoints"].is_array()) {
+        for (const auto& bp : ui["breakpoints"])
+            breakpoints_.insert(bp.get<uint16_t>());
+    }
+
+    if (ui.contains("watchpoints") && ui["watchpoints"].is_array()) {
+        for (const auto& wp : ui["watchpoints"]) {
+            Watchpoint w;
+            w.addr    = wp.value("addr",     uint16_t(0));
+            w.onRead  = wp.value("on_read",  true);
+            w.onWrite = wp.value("on_write", true);
+            watchpoints_.push_back(w);
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Machine config dialogs
 // ---------------------------------------------------------------------------
@@ -872,110 +1091,140 @@ void Application::loadMachineConfigDialog() {
 // Peripherals menu
 // ---------------------------------------------------------------------------
 
+// C64 KERNAL zero-page locations used by the warp-load trap.
+namespace C64ZP {
+    constexpr uint16_t FN_LEN    = 0x00B7;  // current filename length
+    constexpr uint16_t FN_PTR_LO = 0x00BB;  // filename pointer (lo/hi)
+    constexpr uint16_t FN_PTR_HI = 0x00BC;
+    constexpr uint16_t STATUS    = 0x0090;  // I/O status byte ($04 = file not found)
+    constexpr uint16_t LOAD_LO   = 0x00AC;  // load start address (lo/hi)
+    constexpr uint16_t LOAD_HI   = 0x00AD;
+    constexpr uint16_t END_LO    = 0x00AE;  // load end address (lo/hi)
+    constexpr uint16_t END_HI    = 0x00AF;
+}
+
+// KERNAL ILOAD trap: read the requested filename from zero page, serve it from
+// the mounted image straight into RAM, and set the status bytes the KERNAL
+// expects so the caller sees a clean successful load.
+void Application::performWarpLoad() {
+    Memory& ram = machine_.ram();
+    uint8_t  fnLen = ram.read(C64ZP::FN_LEN);
+    uint16_t fnPtr = ram.read(C64ZP::FN_PTR_LO) |
+                     (uint16_t(ram.read(C64ZP::FN_PTR_HI)) << 8);
+
+    // Convert PETSCII filename to ASCII (same mapping as D64/T64).
+    std::string name;
+    for (int i = 0; i < fnLen; ++i) {
+        uint8_t c = ram.read(fnPtr + i);
+        if (c >= 0x41 && c <= 0x5A) c = c - 0x41 + 'a';
+        else if (c >= 0x61 && c <= 0x7A) c = c - 0x61 + 'A';
+        name += static_cast<char>(c);
+    }
+
+    auto data = drive1541_.loadFile(name);
+    if (data.size() < 3) {
+        ram.write(C64ZP::STATUS, 0x04);   // file not found
+        return;
+    }
+
+    uint16_t loadAddr = data[0] | (uint16_t(data[1]) << 8);
+    for (size_t i = 2; i < data.size(); ++i)
+        ram.write(loadAddr + static_cast<uint16_t>(i - 2), data[i]);
+    uint16_t endAddr = loadAddr + static_cast<uint16_t>(data.size() - 2);
+
+    ram.write(C64ZP::STATUS, 0x00);
+    ram.write(C64ZP::LOAD_LO, loadAddr & 0xFF);
+    ram.write(C64ZP::LOAD_HI, loadAddr >> 8);
+    ram.write(C64ZP::END_LO,  endAddr & 0xFF);
+    ram.write(C64ZP::END_HI,  endAddr >> 8);
+
+    char buf[5];
+    std::snprintf(buf, sizeof buf, "%04X", loadAddr);
+    termPrint(std::string("[Warp] Loaded \"") + name + "\" at $" + buf);
+}
+
+// Mount a disk/tape image on a drive peripheral and (for the 1541) arm the
+// warp-load trap.
+void Application::mountDriveImage(IPeripheral* p, const std::string& path) {
+    if (!p->mount(path)) {
+        termPrint("[Drive] Mount failed: " + p->mountError());
+        showError("Failed to mount disk/tape image:\n" + p->mountError());
+        return;
+    }
+    termPrint("[Drive] Mounted: " + path);
+    if (dynamic_cast<Drive1541*>(p)) {
+        machine_.warpLoadTrap().onActivate_ = [this]() { performWarpLoad(); };
+        if (drive1541_.warpEnabled()) machine_.enableWarpLoad();
+    }
+}
+
+void Application::drawPeripheralEntry(IPeripheral* p) {
+    ImGui::PushID(p);
+
+    // Panel toggle (if the peripheral has one)
+    if (dynamic_cast<IHasPanel*>(p)) {
+        bool& vis = peripheralPanelVisible_[p];
+        ImGui::MenuItem(p->peripheralName(), nullptr, &vis);
+    } else {
+        ImGui::TextDisabled("%s", p->peripheralName());
+    }
+
+    // Mount / Eject sub-menu
+    if (ImGui::BeginMenu("  Image")) {
+        if (!p->mountedImage().empty()) {
+            ImGui::TextDisabled("%s", p->mountedImage().c_str());
+            if (ImGui::MenuItem("Eject")) {
+                p->eject();
+                if (dynamic_cast<Drive1541*>(p)) {
+                    machine_.disableWarpLoad();
+                    machine_.warpLoadTrap().onActivate_ = nullptr;
+                }
+            }
+        } else {
+            ImGui::TextDisabled("(no image)");
+        }
+
+        if (dynamic_cast<EpyxFastLoad*>(p)) {
+            if (ImGui::MenuItem("Mount .bin...")) {
+                std::string path = FileDialog::openFile("Epyx FastLoad ROM\0*.bin\0All files\0*.*\0");
+                if (!path.empty()) {
+                    if (!p->mount(path)) {
+                        termPrint("[Cart] Mount failed: " + p->mountError());
+                        showError("Failed to mount cartridge:\n" + p->mountError());
+                    } else {
+                        termPrint("[Cart] Mounted: " + path);
+                    }
+                }
+            }
+        } else {
+            if (ImGui::MenuItem("Mount .d64...")) {
+                std::string path = FileDialog::openFile("D64 disk image\0*.d64\0All files\0*.*\0");
+                if (!path.empty()) mountDriveImage(p, path);
+            }
+            if (ImGui::MenuItem("Mount .t64...")) {
+                std::string path = FileDialog::openFile("T64 tape image\0*.t64\0All files\0*.*\0");
+                if (!path.empty()) mountDriveImage(p, path);
+            }
+        }
+        ImGui::EndMenu();
+    }
+
+    if (!p->mountError().empty()) {
+        ImGui::SameLine();
+        ImGui::TextColored({ 1,0.3f,0.3f,1 }, "!");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", p->mountError().c_str());
+    }
+
+    ImGui::PopID();
+}
+
 void Application::drawPeripheralsMenu() {
     if (peripherals_.empty()) return;
-
     if (!ImGui::BeginMenu("Peripherals")) return;
 
-    for (IPeripheral* p : peripherals_) {
-        ImGui::PushID(p);
-
-        // Panel toggle (if the peripheral has one)
-        if (dynamic_cast<IHasPanel*>(p)) {
-            bool& vis = peripheralPanelVisible_[p];
-            ImGui::MenuItem(p->peripheralName(), nullptr, &vis);
-        } else {
-            ImGui::TextDisabled("%s", p->peripheralName());
-        }
-
-        // Mount / Eject sub-menu
-        if (ImGui::BeginMenu("  Image")) {
-            if (!p->mountedImage().empty()) {
-                ImGui::TextDisabled("%s", p->mountedImage().c_str());
-                if (ImGui::MenuItem("Eject")) {
-                    p->eject();
-                    if (dynamic_cast<Drive1541*>(p)) {
-                        machine_.disableWarpLoad();
-                        machine_.warpLoadTrap().onActivate_ = nullptr;
-                    }
-                }
-            } else {
-                ImGui::TextDisabled("(no image)");
-            }
-            if (dynamic_cast<EpyxFastLoad*>(p)) {
-                if (ImGui::MenuItem("Mount .bin...")) {
-                    std::string path = FileDialog::openFile("Epyx FastLoad ROM\0*.bin\0All files\0*.*\0");
-                    if (!path.empty()) {
-                        if (!p->mount(path))
-                            termPrint("[Cart] Mount failed: " + p->mountError());
-                        else
-                            termPrint("[Cart] Mounted: " + path);
-                    }
-                }
-            } else {
-                auto mountDrive = [&](const std::string& path) {
-                    if (!p->mount(path)) {
-                        termPrint("[Drive] Mount failed: " + p->mountError());
-                        return;
-                    }
-                    termPrint("[Drive] Mounted: " + path);
-                    if (dynamic_cast<Drive1541*>(p)) {
-                        machine_.warpLoadTrap().onActivate_ = [this]() {
-                            Memory& ram = machine_.ram();
-                            uint8_t fnLen = ram.read(0x00B7);
-                            uint16_t fnPtr = ram.read(0x00BB) |
-                                             (uint16_t(ram.read(0x00BC)) << 8);
-                            // Convert PETSCII filename to ASCII (same mapping as D64/T64)
-                            std::string name;
-                            for (int i = 0; i < fnLen; ++i) {
-                                uint8_t c = ram.read(fnPtr + i);
-                                if (c >= 0x41 && c <= 0x5A) c = c - 0x41 + 'a';
-                                else if (c >= 0x61 && c <= 0x7A) c = c - 0x61 + 'A';
-                                name += static_cast<char>(c);
-                            }
-                            auto data = drive1541_.loadFile(name);
-                            if (data.size() < 3) {
-                                ram.write(0x0090, 0x04);  // STATUS = file not found
-                                return;
-                            }
-                            uint16_t loadAddr = data[0] | (uint16_t(data[1]) << 8);
-                            for (size_t i = 2; i < data.size(); ++i)
-                                ram.write(loadAddr + static_cast<uint16_t>(i - 2), data[i]);
-                            uint16_t endAddr = loadAddr + static_cast<uint16_t>(data.size() - 2);
-                            ram.write(0x0090, 0x00);
-                            ram.write(0x00AC, loadAddr & 0xFF);
-                            ram.write(0x00AD, loadAddr >> 8);
-                            ram.write(0x00AE, endAddr & 0xFF);
-                            ram.write(0x00AF, endAddr >> 8);
-                            termPrint(std::string("[Warp] Loaded \"") + name +
-                                      "\" at $" + [](uint16_t a){
-                                          char buf[5]; snprintf(buf, 5, "%04X", a); return std::string(buf);
-                                      }(loadAddr));
-                        };
-                        if (drive1541_.warpEnabled()) machine_.enableWarpLoad();
-                    }
-                };
-                if (ImGui::MenuItem("Mount .d64...")) {
-                    std::string path = FileDialog::openFile("D64 disk image\0*.d64\0All files\0*.*\0");
-                    if (!path.empty()) mountDrive(path);
-                }
-                if (ImGui::MenuItem("Mount .t64...")) {
-                    std::string path = FileDialog::openFile("T64 tape image\0*.t64\0All files\0*.*\0");
-                    if (!path.empty()) mountDrive(path);
-                }
-            }
-            ImGui::EndMenu();
-        }
-
-        if (!p->mountError().empty()) {
-            ImGui::SameLine();
-            ImGui::TextColored({ 1,0.3f,0.3f,1 }, "!");
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("%s", p->mountError().c_str());
-        }
-
-        ImGui::PopID();
-    }
+    for (IPeripheral* p : peripherals_)
+        drawPeripheralEntry(p);
 
     ImGui::EndMenu();
 }

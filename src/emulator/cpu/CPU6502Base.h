@@ -101,6 +101,10 @@ protected:
     void     stackPush(uint8_t v);
     uint8_t  stackPop();
 
+    // Shared relative-branch helper: when taken, adds the branch cycle plus a
+    // page-cross penalty and updates PC.  Used by all eight Bxx instructions.
+    uint8_t  doBranch(bool taken);
+
     // -----------------------------------------------------------------------
     // Flag helpers
     // -----------------------------------------------------------------------

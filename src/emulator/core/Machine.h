@@ -16,6 +16,7 @@
 #include "emulator/devices/VIC6566.h"
 #include "emulator/devices/AppleIIVideo.h"
 #include "emulator/devices/AppleIIIO.h"
+#include "emulator/devices/DiskII.h"
 #include "emulator/cpu/CPU6510.h"
 #include "emulator/cpu/CPU8502.h"
 #include "emulator/cpu/CPU65C02.h"
@@ -117,7 +118,8 @@ public:
     SID6581& sid()    { return sid_; }
     ULA&          ula()          { return ula_; }
     AppleIIVideo& appleIIVideo() { return appleIIVideo_; }
-    AppleIIIO&    appleIIIO()    { return appleIIIO_; }
+    AppleIIIO&    appleIIIO()    { return appleIIIO_;    }
+    DiskII&       diskII()       { return diskII_;       }
     CPU6510&       cpu6510()       { return cpu6510_; }
     CPUZ80&        cpuZ80()        { return cpuZ80_; }
     C64IOSpace&    c64IOSpace()    { return c64IOSpace_; }
@@ -253,6 +255,7 @@ private:
     ULA          ula_;
     AppleIIVideo appleIIVideo_;
     AppleIIIO    appleIIIO_;
+    DiskII       diskII_;
     C64IOSpace   c64IOSpace_;   // pre-wired to the four fixed chips above
     EpyxFastLoad epyxFastLoad_; // cartridge slot — wired into bus by buildC64Preset
     WarpLoadTrap warpLoadTrap_; // KERNAL ILOAD intercept — wired into bus by buildC64Preset

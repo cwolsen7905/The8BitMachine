@@ -392,7 +392,6 @@ void CIA6526::notifyIEC() {
         return (pra_ & (1 << bit)) == 0;           // output: bit=0 → line HIGH (released)
     };
 
-    bool oldAtn = iecDriven_.atn;
     iecDriven_.atn  = lineReleased(3);
     iecDriven_.clk  = lineReleased(4);
     iecDriven_.data = lineReleased(5);
@@ -435,7 +434,6 @@ void CIA6526::updateIECInputBits() {
 
     bool prevBusAtn  = iecBusAtn_;
     bool prevBusClk  = iecBusClk_;
-    bool prevBusData = iecBusData_;
 
     for (IIECDevice* dev : iecDevices_) {
         IECLines d = dev->getIECLines();

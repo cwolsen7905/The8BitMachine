@@ -11,7 +11,7 @@ class Bus;
 // ---------------------------------------------------------------------------
 struct DisasmLine {
     uint16_t addr       = 0;
-    uint8_t  bytes[3]   = {};
+    uint8_t  bytes[4]   = {};   // up to 4 (Z80 DD/FD CB d op)
     int      byteCount  = 0;
     std::string mnemonic;    // e.g. "LDA"
     std::string operand;     // e.g. "#$42"
@@ -30,6 +30,14 @@ struct DisasmLine {
 class Disassembler {
 public:
     // Disassemble `count` instructions starting at `startAddr`.
+    // Pass cmos=true to decode WDC 65C02 (CMOS) opcodes and addressing modes;
+    // the default decodes the NMOS 6502/6510/8502 instruction set.
     static std::vector<DisasmLine> disassemble(
+        const Bus& bus, uint16_t startAddr, int count, bool cmos = false);
+
+    // Disassemble `count` Zilog Z80 instructions starting at `startAddr`.
+    // Handles the CB / ED / DD / FD / DDCB / FDCB prefixes for correct
+    // instruction sizing and mnemonics.
+    static std::vector<DisasmLine> disassembleZ80(
         const Bus& bus, uint16_t startAddr, int count);
 };

@@ -1,21 +1,7 @@
 #include "D64Image.h"
+#include "CBMText.h"
 #include <algorithm>
-#include <cctype>
 #include <fstream>
-
-// CBM wildcard match: '?' = any one char, '*' = match rest of name.
-static bool cbmMatch(const std::string& pattern, const std::string& name) {
-    size_t pi = 0, ni = 0;
-    while (pi < pattern.size()) {
-        if (pattern[pi] == '*') return true;
-        if (ni >= name.size()) return false;
-        char p = (char)std::tolower((unsigned char)pattern[pi]);
-        char n = (char)std::tolower((unsigned char)name[ni]);
-        if (p != '?' && p != n) return false;
-        ++pi; ++ni;
-    }
-    return ni == name.size();
-}
 
 // ---------------------------------------------------------------------------
 // Geometry
@@ -55,13 +41,19 @@ bool D64Image::load(const std::string& path) {
 
     // Standard D64: 174848 bytes (35 tracks, no error bytes).
     // Extended: 175531 bytes (+ 683 error bytes).  We accept both.
-    if (sz < 174848) {
+    static constexpr long kStandardD64Size = 174848;  // 683 sectors × 256
+    if (sz < kStandardD64Size) {
         error_ = "File too small to be a .d64 image";
         return false;
     }
 
     data_.resize(static_cast<size_t>(sz));
     f.read(reinterpret_cast<char*>(data_.data()), sz);
+    if (!f) {
+        error_ = "Failed to read .d64 image (file truncated?)";
+        unload();
+        return false;
+    }
 
     parseDirectory();
     return true;
@@ -114,21 +106,6 @@ std::vector<uint8_t> D64Image::readFile(int track, int sector) const {
 // Directory
 // ---------------------------------------------------------------------------
 
-std::string D64Image::petsciiToAscii(const uint8_t* buf, int len) {
-    std::string s;
-    for (int i = 0; i < len; ++i) {
-        uint8_t c = buf[i];
-        if (c == 0xA0) break;  // PETSCII shift-space = padding → stop
-        // PETSCII upper-case letters are $41-$5A; map to ASCII lower
-        if (c >= 0x41 && c <= 0x5A) c = c - 0x41 + 'a';
-        else if (c >= 0x61 && c <= 0x7A) c = c - 0x61 + 'A';
-        s += static_cast<char>(c);
-    }
-    // Strip trailing spaces
-    while (!s.empty() && s.back() == ' ') s.pop_back();
-    return s;
-}
-
 void D64Image::parseDirectory() {
     dir_.clear();
     uint8_t buf[256];
@@ -147,7 +124,7 @@ void D64Image::parseDirectory() {
             de.type   = ftype;
             de.track  = entry[3];
             de.sector = entry[4];
-            de.name   = petsciiToAscii(entry + 5, 16);
+            de.name   = cbm::petsciiToAscii(entry + 5, 16);
             de.blocks = static_cast<uint16_t>(entry[30] | (entry[31] << 8));
             dir_.push_back(de);
         }
@@ -163,7 +140,7 @@ void D64Image::parseDirectory() {
 std::vector<uint8_t> D64Image::findPRG(const std::string& name) const {
     for (const auto& de : dir_) {
         if (!de.isPRG()) continue;
-        if (cbmMatch(name, de.name))
+        if (cbm::match(name, de.name))
             return readFile(de.track, de.sector);
     }
     return {};
@@ -181,7 +158,7 @@ std::string D64Image::diskName() const {
     if (data_.empty()) return {};
     uint8_t buf[256];
     if (!readSector(18, 0, buf)) return {};
-    return petsciiToAscii(buf + 0x90, 16);
+    return cbm::petsciiToAscii(buf + 0x90, 16);
 }
 
 int D64Image::freeBlocks() const {

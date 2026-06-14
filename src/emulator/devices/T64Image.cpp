@@ -1,36 +1,6 @@
 #include "T64Image.h"
-#include <cctype>
+#include "CBMText.h"
 #include <fstream>
-
-static bool cbmMatch(const std::string& pattern, const std::string& name) {
-    size_t pi = 0, ni = 0;
-    while (pi < pattern.size()) {
-        if (pattern[pi] == '*') return true;
-        if (ni >= name.size()) return false;
-        char p = (char)std::tolower((unsigned char)pattern[pi]);
-        char n = (char)std::tolower((unsigned char)name[ni]);
-        if (p != '?' && p != n) return false;
-        ++pi; ++ni;
-    }
-    return ni == name.size();
-}
-
-// ---------------------------------------------------------------------------
-// PETSCII → ASCII (same mapping as D64Image)
-// ---------------------------------------------------------------------------
-
-std::string T64Image::petsciiToAscii(const uint8_t* buf, int len) {
-    std::string s;
-    for (int i = 0; i < len; ++i) {
-        uint8_t c = buf[i];
-        if (c == 0xA0 || c == 0x00) break;  // padding sentinel
-        if (c >= 0x41 && c <= 0x5A) c = c - 0x41 + 'a';
-        else if (c >= 0x61 && c <= 0x7A) c = c - 0x61 + 'A';
-        s += static_cast<char>(c);
-    }
-    while (!s.empty() && s.back() == ' ') s.pop_back();
-    return s;
-}
 
 // ---------------------------------------------------------------------------
 // Load / unload
@@ -54,6 +24,11 @@ bool T64Image::load(const std::string& path) {
 
     data_.resize(sz);
     f.read(reinterpret_cast<char*>(data_.data()), static_cast<std::streamsize>(sz));
+    if (!f) {
+        error_ = "Failed to read .t64 image (file truncated?)";
+        unload();
+        return false;
+    }
 
     // Read num_entries from header [34–35] (LE).
     int numSlots = static_cast<int>(data_[34]) | (static_cast<int>(data_[35]) << 8);
@@ -86,7 +61,7 @@ void T64Image::unload() {
 
 std::string T64Image::tapeName() const {
     if (data_.size() < 64) return {};
-    return petsciiToAscii(data_.data() + 40, 24);
+    return cbm::petsciiToAscii(data_.data() + 40, 24);
 }
 
 // ---------------------------------------------------------------------------
@@ -111,7 +86,7 @@ void T64Image::parseEntries(int numSlots) {
         e.startAddr = static_cast<uint16_t>(rec[2] | (rec[3] << 8));
         e.endAddr   = static_cast<uint16_t>(rec[4] | (rec[5] << 8));
         e.dataOffset= static_cast<uint32_t>(rec[8] | (rec[9]<<8) | (rec[10]<<16) | (rec[11]<<24));
-        e.name      = petsciiToAscii(rec + 16, 16);
+        e.name      = cbm::petsciiToAscii(rec + 16, 16);
         entries_.push_back(e);
     }
 }
@@ -125,7 +100,9 @@ std::vector<uint8_t> T64Image::getFile(int index) const {
     const Entry& e = entries_[index];
     uint32_t size = e.dataSize();
     if (size == 0) return {};
-    if (e.dataOffset + size > data_.size()) return {};
+    // Guard against malformed offsets; written so the addition can never wrap.
+    if (e.dataOffset > data_.size() || size > data_.size() - e.dataOffset)
+        return {};
 
     // Prepend the 2-byte load address so callers get a standard PRG layout.
     std::vector<uint8_t> out;
@@ -149,7 +126,7 @@ std::vector<uint8_t> T64Image::firstPRG() const {
 std::vector<uint8_t> T64Image::findPRG(const std::string& name) const {
     for (int i = 0; i < static_cast<int>(entries_.size()); ++i) {
         if (!entries_[i].isPRG()) continue;
-        if (cbmMatch(name, entries_[i].name))
+        if (cbm::match(name, entries_[i].name))
             return getFile(i);
     }
     return {};

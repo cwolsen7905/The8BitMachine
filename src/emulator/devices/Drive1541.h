@@ -60,6 +60,11 @@ public:
     // Warp load toggle — when true and an image is mounted, LOAD is intercepted
     // at the KERNAL level without using the IEC bus.  Toggling fires onWarpToggle.
     bool warpEnabled() const { return warpEnabled_; }
+    void setWarpEnabled(bool enabled) {
+        if (warpEnabled_ == enabled) return;
+        warpEnabled_ = enabled;
+        if (onWarpToggle) onWarpToggle(warpEnabled_);
+    }
     std::function<void(bool)> onWarpToggle;
 
     // -----------------------------------------------------------------------
