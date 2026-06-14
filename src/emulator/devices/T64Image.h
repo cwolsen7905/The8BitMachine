@@ -74,5 +74,4 @@ private:
     std::vector<Entry>    entries_;
 
     void parseEntries(int numSlots);
-    static std::string petsciiToAscii(const uint8_t* buf, int len);
 };

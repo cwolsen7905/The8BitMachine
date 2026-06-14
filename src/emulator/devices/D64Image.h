@@ -77,5 +77,4 @@ private:
     std::vector<DirEntry>    dir_;
 
     void parseDirectory();
-    static std::string petsciiToAscii(const uint8_t* buf, int len);
 };
