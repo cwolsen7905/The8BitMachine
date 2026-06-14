@@ -322,25 +322,68 @@ uint8_t CPU6502Base::AIIX() {
 
 uint8_t CPU6502Base::ADC() {
     fetch();
-    uint16_t tmp = static_cast<uint16_t>(A)
-                 + static_cast<uint16_t>(fetched_)
-                 + static_cast<uint16_t>(getFlag(C));
-    setFlag(C, tmp > 0x00FF);
-    setFlag(Z, (tmp & 0x00FF) == 0);
-    setFlag(N, tmp & 0x0080);
-    setFlag(V, (~(static_cast<uint16_t>(A) ^ static_cast<uint16_t>(fetched_)) &
-                 (static_cast<uint16_t>(A) ^ tmp)) & 0x0080);
-    A = tmp & 0x00FF;  return 1;
+    const uint16_t a = A, m = fetched_, c = getFlag(C);
+    const uint16_t bin = a + m + c;          // binary result
+
+    if (getFlag(D)) {
+        // BCD add (bit-test form).  On NMOS the N/V/Z flags reflect the
+        // un-corrected intermediate (a documented quirk); CMOS recomputes them
+        // from the final result and burns one extra cycle.
+        uint16_t lo = (a & 0x0F) + (m & 0x0F) + c;
+        if (lo > 0x09) lo += 0x06;
+        uint16_t hi = (a >> 4) + (m >> 4) + (lo > 0x0F ? 1 : 0);
+        const uint16_t inter = (hi << 4) | (lo & 0x0F);
+        if (nmosBug_) {
+            setFlag(Z, (bin & 0x00FF) == 0);
+            setFlag(N, inter & 0x80);
+            setFlag(V, (~(a ^ m) & (a ^ inter)) & 0x0080);
+        }
+        if (hi > 0x09) hi += 0x06;
+        setFlag(C, hi > 0x0F);
+        const uint8_t res = static_cast<uint8_t>((hi << 4) | (lo & 0x0F));
+        if (!nmosBug_) {
+            setFlag(Z, res == 0);
+            setFlag(N, res & 0x80);
+            setFlag(V, (~(a ^ m) & (a ^ res)) & 0x0080);
+            ++cycles_;
+        }
+        A = res;  return 1;
+    }
+
+    setFlag(C, bin > 0x00FF);
+    setFlag(Z, (bin & 0x00FF) == 0);
+    setFlag(N, bin & 0x0080);
+    setFlag(V, (~(a ^ m) & (a ^ bin)) & 0x0080);
+    A = bin & 0x00FF;  return 1;
 }
 uint8_t CPU6502Base::SBC() {
     fetch();
-    uint16_t val = static_cast<uint16_t>(fetched_) ^ 0x00FF;
-    uint16_t tmp = static_cast<uint16_t>(A) + val + static_cast<uint16_t>(getFlag(C));
-    setFlag(C, tmp & 0xFF00);
-    setFlag(Z, (tmp & 0x00FF) == 0);
-    setFlag(N, tmp & 0x0080);
-    setFlag(V, (tmp ^ static_cast<uint16_t>(A)) & (tmp ^ val) & 0x0080);
-    A = tmp & 0x00FF;  return 1;
+    const uint16_t a = A, m = fetched_, c = getFlag(C);
+    const uint16_t val = m ^ 0x00FF;
+    const uint16_t bin = a + val + c;        // binary result drives all flags
+
+    // Flags are identical to binary mode in NMOS decimal SBC; set them first.
+    setFlag(C, bin & 0xFF00);
+    setFlag(Z, (bin & 0x00FF) == 0);
+    setFlag(N, bin & 0x0080);
+    setFlag(V, (bin ^ a) & (bin ^ val) & 0x0080);
+
+    if (getFlag(D)) {
+        // BCD subtract (bit-test form); only the accumulator differs on NMOS.
+        int lo = static_cast<int>(a & 0x0F) - static_cast<int>(m & 0x0F) - (1 - static_cast<int>(c));
+        int hi = static_cast<int>(a >> 4)  - static_cast<int>(m >> 4);
+        if (lo & 0x10) { lo -= 0x06; hi -= 1; }
+        if (hi & 0x10) { hi -= 0x06; }
+        const uint8_t res = static_cast<uint8_t>(((hi & 0x0F) << 4) | (lo & 0x0F));
+        if (!nmosBug_) {                     // CMOS: Z/N from decimal result, +1 cycle
+            setFlag(Z, res == 0);
+            setFlag(N, res & 0x80);
+            ++cycles_;
+        }
+        A = res;  return 1;
+    }
+
+    A = bin & 0x00FF;  return 1;
 }
 uint8_t CPU6502Base::AND() { fetch(); A = A & fetched_; setFlag(Z, A==0); setFlag(N, A&0x80); return 1; }
 uint8_t CPU6502Base::ORA() { fetch(); A = A | fetched_; setFlag(Z, A==0); setFlag(N, A&0x80); return 1; }

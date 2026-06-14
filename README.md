@@ -29,6 +29,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 Shared (`CPU6502Base`):
 - All 56 legal 6502 opcodes, all 13 addressing modes
+- Decimal (BCD) mode for `ADC`/`SBC`, with NMOS flag quirks reproduced (CMOS core gets decimal-correct flags + the extra cycle)
 - Cycle-accurate timing with page-cross and branch penalties
 - IRQ and NMI with full stack push and vector load
 - BRK / RTI with correct flag handling
