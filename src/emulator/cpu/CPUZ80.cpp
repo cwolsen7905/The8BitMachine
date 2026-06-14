@@ -84,9 +84,8 @@ void CPUZ80::clock() {
                 cycles_ = 13 - 1;
                 break;
             case 2: {
-                uint16_t vec = rd((uint16_t(I) << 8) | 0xFF);
-                vec |= uint16_t(rd((uint16_t(I) << 8) | 0xFF)) << 8;
-                // Use I register + 0xFF as the data-bus value (common safe default)
+                // Real IM 2 forms the vector address from I:databus; we use
+                // 0xFF as a safe default data-bus value, then load the vector.
                 uint16_t addr = (uint16_t(I) << 8) | 0xFF;
                 push16(PC);
                 PC      = rd16(addr);
@@ -1355,16 +1354,6 @@ void CPUZ80::execXY(uint8_t op, uint16_t& xy) {
     uint8_t q = y & 1;
 
     // Helper lambdas for xy-indexed memory access
-    auto readXY = [&]() -> uint8_t {
-        int8_t d = int8_t(fetch());
-        cycles_ += 4;   // extra for displacement + memory
-        return rd(xy + d);
-    };
-    auto writeXY = [&](uint8_t v) {
-        int8_t d = int8_t(fetch());
-        cycles_ += 4;
-        wr(xy + d, v);
-    };
     auto readXYpre = [&](int8_t d) -> uint8_t {
         cycles_ += 4;
         return rd(xy + d);

@@ -153,6 +153,18 @@ endif()
 target_include_directories(${PROJECT_NAME} PRIVATE src)
 target_link_libraries(${PROJECT_NAME} PRIVATE imgui_lib SDL2::SDL2main SDL2::SDL2 SDL2_image::SDL2_image OpenGL::GL nlohmann_json::nlohmann_json nfd)
 
+# Enable a useful warning set on our own sources only (vendored imgui/nfd build
+# with their upstream defaults).
+if(MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE /W4)
+else()
+    # -Wno-missing-field-initializers: several result structs intentionally rely
+    # on default member initializers (e.g. MachineConfigResult), so partial
+    # brace-init is by design rather than an oversight.
+    target_compile_options(${PROJECT_NAME} PRIVATE
+        -Wall -Wextra -Wno-missing-field-initializers)
+endif()
+
 if(APPLE)
     target_compile_definitions(${PROJECT_NAME} PRIVATE GL_SILENCE_DEPRECATION)
     target_link_libraries(${PROJECT_NAME} PRIVATE
