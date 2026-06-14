@@ -16,6 +16,9 @@ Releases are tagged on the `main` branch; active development happens on `dev`.
 - **User-visible error and confirmation dialogs** — load/mount failures now raise a modal error dialog (with the underlying reason) instead of only printing to the terminal pane, where they were easy to miss: ROM open/empty/too-small errors, cartridge mount failures, disk/tape mount failures, and per-peripheral session-restore remount failures all surface a popup; destructive actions now ask first — "New Machine" and the breakpoint/watchpoint "Clear All" buttons show a Yes/Cancel confirmation; generic `showError()` / `confirm()` / `drawModals()` helpers added to `Application`; "New Machine" also resets the disassembler view address to `$0000`
 - **Terminal scrollback cap** — `termPrint()` now caps `termLines_` at 5000 entries (oldest trimmed) so a long-running session can't grow the buffer without bound
 
+### Added
+- **65C02 disassembly** — the Disassembler now decodes the WDC 65C02 (CMOS) instruction set when the 65C02 is the active CPU: two new addressing modes (`($zp)` zero-page indirect and `($abs,X)` absolute-indexed indirect) plus the CMOS-only opcodes (`BRA`, `STZ`, `TRB`/`TSB`, `INA`/`DEA`, `PHX`/`PHY`/`PLX`/`PLY`, `BIT #imm`, `BIT zp,X`/`abs,X`, and the `(zp)` forms of `ORA`/`AND`/`EOR`/`ADC`/`STA`/`LDA`/`CMP`/`SBC`); a `cmos` flag (default off) selects the overlay so NMOS 6502/6510/8502 disassembly is unchanged; `Application` passes the flag based on the active CPU's name
+
 ### Changed
 - **Compiler warnings enabled on project sources** — `CMakeLists.txt` now builds the main target with `-Wall -Wextra` (GCC/Clang) or `/W4` (MSVC); vendored imgui/nfd keep their upstream defaults. `-Wno-missing-field-initializers` is set because several result structs deliberately rely on default member initializers
 

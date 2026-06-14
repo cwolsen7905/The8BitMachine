@@ -30,6 +30,8 @@ struct DisasmLine {
 class Disassembler {
 public:
     // Disassemble `count` instructions starting at `startAddr`.
+    // Pass cmos=true to decode WDC 65C02 (CMOS) opcodes and addressing modes;
+    // the default decodes the NMOS 6502/6510/8502 instruction set.
     static std::vector<DisasmLine> disassemble(
-        const Bus& bus, uint16_t startAddr, int count);
+        const Bus& bus, uint16_t startAddr, int count, bool cmos = false);
 };

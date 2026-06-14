@@ -12,11 +12,13 @@ enum class AM : uint8_t {
     ZP0, ZPX, ZPY,
     ABS, ABX, ABY,
     IND, IZX, IZY,
-    REL
+    REL,
+    IZP,  // ($zp)      — 65C02 zero-page indirect
+    AIX   // ($abs,X)   — 65C02 absolute-indexed indirect (JMP)
 };
 
 // Extra bytes consumed after the opcode byte (0, 1, or 2)
-static const uint8_t kModeBytes[13] = {
+static const uint8_t kModeBytes[15] = {
     0, // IMP
     0, // ACC
     1, // IMM
@@ -30,6 +32,8 @@ static const uint8_t kModeBytes[13] = {
     1, // IZX
     1, // IZY
     1, // REL
+    1, // IZP
+    2, // AIX
 };
 
 // ============================================================================
@@ -37,7 +41,9 @@ static const uint8_t kModeBytes[13] = {
 // Matches the dispatch table in CPU8502.cpp exactly.
 // ============================================================================
 
-static const struct { const char* name; AM mode; } kOpcodes[256] = {
+struct OpInfo { const char* name; AM mode; };
+
+static const OpInfo kOpcodes[256] = {
 /*$00*/{"BRK",AM::IMP},{"ORA",AM::IZX},{"???",AM::IMP},{"???",AM::IMP},
 /*$04*/{"???",AM::ZP0},{"ORA",AM::ZP0},{"ASL",AM::ZP0},{"???",AM::IMP},
 /*$08*/{"PHP",AM::IMP},{"ORA",AM::IMM},{"ASL",AM::ACC},{"???",AM::IMP},
@@ -120,6 +126,47 @@ static const struct { const char* name; AM mode; } kOpcodes[256] = {
 };
 
 // ============================================================================
+// WDC 65C02 (CMOS) overlay
+//
+// Mirrors the entries patched in CPU65C02.cpp so the disassembler shows the
+// same mnemonics and addressing modes the CMOS core actually executes.
+// Returns the base (NMOS) entry for any opcode the 65C02 doesn't redefine.
+// ============================================================================
+
+static OpInfo cmosPatch(uint8_t op, OpInfo base) {
+    switch (op) {
+        case 0x04: return {"TSB", AM::ZP0};
+        case 0x0C: return {"TSB", AM::ABS};
+        case 0x12: return {"ORA", AM::IZP};
+        case 0x14: return {"TRB", AM::ZP0};
+        case 0x1A: return {"INA", AM::IMP};
+        case 0x1C: return {"TRB", AM::ABS};
+        case 0x32: return {"AND", AM::IZP};
+        case 0x34: return {"BIT", AM::ZPX};
+        case 0x3A: return {"DEA", AM::IMP};
+        case 0x3C: return {"BIT", AM::ABX};
+        case 0x52: return {"EOR", AM::IZP};
+        case 0x5A: return {"PHY", AM::IMP};
+        case 0x64: return {"STZ", AM::ZP0};
+        case 0x72: return {"ADC", AM::IZP};
+        case 0x74: return {"STZ", AM::ZPX};
+        case 0x7A: return {"PLY", AM::IMP};
+        case 0x7C: return {"JMP", AM::AIX};
+        case 0x80: return {"BRA", AM::REL};
+        case 0x89: return {"BIT", AM::IMM};
+        case 0x92: return {"STA", AM::IZP};
+        case 0x9C: return {"STZ", AM::ABS};
+        case 0x9E: return {"STZ", AM::ABX};
+        case 0xB2: return {"LDA", AM::IZP};
+        case 0xD2: return {"CMP", AM::IZP};
+        case 0xDA: return {"PHX", AM::IMP};
+        case 0xF2: return {"SBC", AM::IZP};
+        case 0xFA: return {"PLX", AM::IMP};
+        default:   return base;
+    }
+}
+
+// ============================================================================
 // Operand formatter
 // ============================================================================
 
@@ -140,6 +187,8 @@ static std::string fmtOperand(AM mode, uint8_t lo, uint8_t hi, uint16_t instrAdd
         case AM::IND:  std::snprintf(buf, sizeof(buf), "($%04X)",     abs);          break;
         case AM::IZX:  std::snprintf(buf, sizeof(buf), "($%02X,X)",   lo);           break;
         case AM::IZY:  std::snprintf(buf, sizeof(buf), "($%02X),Y",   lo);           break;
+        case AM::IZP:  std::snprintf(buf, sizeof(buf), "($%02X)",     lo);           break;
+        case AM::AIX:  std::snprintf(buf, sizeof(buf), "($%04X,X)",   abs);          break;
         case AM::REL: {
             // Resolve branch target: PC after instruction (instrAddr+2) + signed offset
             uint16_t target = static_cast<uint16_t>(instrAddr + 2 + static_cast<int8_t>(lo));
@@ -156,7 +205,7 @@ static std::string fmtOperand(AM mode, uint8_t lo, uint8_t hi, uint16_t instrAdd
 // ============================================================================
 
 std::vector<DisasmLine> Disassembler::disassemble(
-    const Bus& bus, uint16_t startAddr, int count)
+    const Bus& bus, uint16_t startAddr, int count, bool cmos)
 {
     std::vector<DisasmLine> result;
     result.reserve(count);
@@ -168,7 +217,8 @@ std::vector<DisasmLine> Disassembler::disassemble(
         line.addr = addr;
 
         const uint8_t opcode = bus.read(addr);
-        const auto&   info   = kOpcodes[opcode];
+        const OpInfo  info   = cmos ? cmosPatch(opcode, kOpcodes[opcode])
+                                    : kOpcodes[opcode];
         const int     size   = 1 + static_cast<int>(kModeBytes[static_cast<int>(info.mode)]);
 
         line.byteCount = size;
@@ -182,11 +232,11 @@ std::vector<DisasmLine> Disassembler::disassemble(
         line.operand  = fmtOperand(info.mode, lo, hi, addr);
 
         switch (info.mode) {
-            case AM::ABS: case AM::ABX: case AM::ABY: case AM::IND:
+            case AM::ABS: case AM::ABX: case AM::ABY: case AM::IND: case AM::AIX:
                 line.targetAddr = static_cast<uint16_t>((hi << 8) | lo);
                 line.hasTarget  = true;
                 break;
-            case AM::ZP0: case AM::ZPX: case AM::ZPY:
+            case AM::ZP0: case AM::ZPX: case AM::ZPY: case AM::IZP:
                 line.targetAddr = lo;
                 line.hasTarget  = true;
                 break;

@@ -153,7 +153,8 @@ void Application::drawDisassembler() {
         ? static_cast<uint16_t>(cpu.getPC() > 40 ? cpu.getPC() - 40 : 0)
         : disasmViewAddr_;
 
-    const auto lines = Disassembler::disassemble(machine_.bus(), viewStart, 60);
+    const bool cmos = std::string(cpu.cpuName()) == "WDC 65C02";
+    const auto lines = Disassembler::disassemble(machine_.bus(), viewStart, 60, cmos);
 
     constexpr ImGuiTableFlags tflags =
         ImGuiTableFlags_RowBg           |
