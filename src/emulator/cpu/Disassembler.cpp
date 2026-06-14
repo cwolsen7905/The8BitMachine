@@ -256,3 +256,260 @@ std::vector<DisasmLine> Disassembler::disassemble(
 
     return result;
 }
+
+// ============================================================================
+// Zilog Z80 disassembler
+//
+// Uses the systematic x/y/z/p/q opcode decomposition (see "Decoding Z80
+// opcodes", Cristian Dinu) so the CB / ED / DD / FD / DDCB / FDCB prefixes are
+// all handled with small shared tables.  Goal is correct instruction *sizing*
+// (so the listing never desyncs) and accurate mnemonics for the documented
+// instruction set; a handful of undocumented IXH/IXL forms are shown too.
+// ============================================================================
+
+namespace {
+
+const char* const kZr[8]   = {"B","C","D","E","H","L","(HL)","A"};
+const char* const kZrp[4]  = {"BC","DE","HL","SP"};
+const char* const kZrp2[4] = {"BC","DE","HL","AF"};
+const char* const kZcc[8]  = {"NZ","Z","NC","C","PO","PE","P","M"};
+const char* const kZalu[8] = {"ADD A,","ADC A,","SUB ","SBC A,","AND ","XOR ","OR ","CP "};
+const char* const kZrot[8] = {"RLC","RRC","RL","RR","SLA","SRA","SLL","SRL"};
+const char* const kZim[8]  = {"0","0","1","2","0","0","1","2"};
+const char* const kZmisc[8]= {"RLCA","RRCA","RLA","RRA","DAA","CPL","SCF","CCF"};
+const char* const kZbli[4][4] = {
+    {"LDI","CPI","INI","OUTI"},
+    {"LDD","CPD","IND","OUTD"},
+    {"LDIR","CPIR","INIR","OTIR"},
+    {"LDDR","CPDR","INDR","OTDR"},
+};
+
+// Sequential byte reader over the bus; tracks how many bytes were consumed.
+struct ZReader {
+    const Bus* bus;
+    uint16_t   base;
+    int        n = 0;
+    uint8_t next() { return bus->read(static_cast<uint16_t>(base + n++)); }
+};
+
+std::string zhex8(uint8_t v)  { char b[8];  std::snprintf(b, sizeof b, "$%02X", v); return b; }
+std::string zhex16(uint16_t v){ char b[8];  std::snprintf(b, sizeof b, "$%04X", v); return b; }
+
+// Decode one instruction into a combined "MNEM operand" string; fills length,
+// and (for jumps/calls) the resolved target address.
+std::string z80One(const Bus& bus, uint16_t pc, int& len,
+                   uint16_t& target, bool& hasTarget) {
+    ZReader r{&bus, pc};
+    hasTarget = false;
+
+    int         idx = 0;            // 0 = HL, 1 = IX, 2 = IY
+    std::string ix  = "HL";
+    uint8_t op = r.next();
+    while (op == 0xDD || op == 0xFD) {
+        idx = (op == 0xDD) ? 1 : 2;
+        ix  = (op == 0xDD) ? "IX" : "IY";
+        op  = r.next();
+    }
+
+    auto imm16 = [&]() -> uint16_t { uint8_t lo = r.next(), hi = r.next();
+                                     return static_cast<uint16_t>(lo | (hi << 8)); };
+    auto rpName  = [&](int p) { return (p == 2 && idx) ? ix : std::string(kZrp[p]); };
+    auto rp2Name = [&](int p) { return (p == 2 && idx) ? ix : std::string(kZrp2[p]); };
+    // Register operand; (HL) becomes (IX+d)/(IY+d) and consumes a displacement.
+    auto regName = [&](int i) -> std::string {
+        if (idx == 0 || (i != 6 && i != 4 && i != 5)) return kZr[i];
+        if (i == 6) { int8_t d = static_cast<int8_t>(r.next());
+                      char b[16]; std::snprintf(b, sizeof b, "(%s%+d)", ix.c_str(), d);
+                      return b; }
+        return ix + (i == 4 ? "H" : "L");   // undocumented IXH/IXL
+    };
+
+    std::string s;
+
+    auto decodeCB = [&]() {
+        if (idx != 0) {
+            int8_t d = static_cast<int8_t>(r.next());   // DDCB: d precedes opcode
+            uint8_t o = r.next();
+            int x = o >> 6, y = (o >> 3) & 7, z = o & 7;
+            char mem[16]; std::snprintf(mem, sizeof mem, "(%s%+d)", ix.c_str(), d);
+            const char* extra = (z != 6) ? kZr[z] : nullptr;  // undocumented store
+            if (x == 0)      s = std::string(kZrot[y]) + " " + mem;
+            else if (x == 1) s = "BIT " + std::to_string(y) + "," + mem;
+            else if (x == 2) s = "RES " + std::to_string(y) + "," + mem;
+            else             s = "SET " + std::to_string(y) + "," + mem;
+            if (x != 1 && extra) s += "," + std::string(extra);   // ld r,(set/res ...)
+        } else {
+            uint8_t o = r.next();
+            int x = o >> 6, y = (o >> 3) & 7, z = o & 7;
+            if (x == 0)      s = std::string(kZrot[y]) + " " + kZr[z];
+            else if (x == 1) s = "BIT " + std::to_string(y) + "," + kZr[z];
+            else if (x == 2) s = "RES " + std::to_string(y) + "," + kZr[z];
+            else             s = "SET " + std::to_string(y) + "," + kZr[z];
+        }
+    };
+
+    auto decodeED = [&]() {
+        uint8_t o = r.next();
+        int x = o >> 6, y = (o >> 3) & 7, z = o & 7, p = y >> 1, q = y & 1;
+        if (x == 1) {
+            switch (z) {
+                case 0: s = (y == 6) ? "IN (C)" : "IN " + std::string(kZr[y]) + ",(C)"; break;
+                case 1: s = (y == 6) ? "OUT (C),0" : "OUT (C)," + std::string(kZr[y]); break;
+                case 2: s = (q ? "ADC HL," : "SBC HL,") + std::string(kZrp[p]); break;
+                case 3: { uint16_t nn = imm16();
+                          s = q ? "LD " + std::string(kZrp[p]) + ",(" + zhex16(nn) + ")"
+                                : "LD (" + zhex16(nn) + ")," + std::string(kZrp[p]); break; }
+                case 4: s = "NEG"; break;
+                case 5: s = (y == 1) ? "RETI" : "RETN"; break;
+                case 6: s = "IM " + std::string(kZim[y]); break;
+                default: { const char* t[8] = {"LD I,A","LD R,A","LD A,I","LD A,R",
+                                               "RRD","RLD","NOP","NOP"};
+                           s = t[y]; break; }
+            }
+        } else if (x == 2 && z <= 3 && y >= 4) {
+            s = kZbli[y - 4][z];
+        } else {
+            s = "NOP";   // invalid ED prefix → NONI/NOP
+        }
+    };
+
+    if (op == 0xCB)      decodeCB();
+    else if (op == 0xED) decodeED();
+    else {
+        int x = op >> 6, y = (op >> 3) & 7, z = op & 7, p = y >> 1, q = y & 1;
+        switch (x) {
+        case 0:
+            switch (z) {
+            case 0:
+                if (y == 0) s = "NOP";
+                else if (y == 1) s = "EX AF,AF'";
+                else { int8_t e = static_cast<int8_t>(r.next());
+                       target = static_cast<uint16_t>(pc + r.n + e); hasTarget = true;
+                       if (y == 2)      s = "DJNZ " + zhex16(target);
+                       else if (y == 3) s = "JR " + zhex16(target);
+                       else             s = "JR " + std::string(kZcc[y - 4]) + "," + zhex16(target); }
+                break;
+            case 1:
+                if (q == 0) { uint16_t nn = imm16(); s = "LD " + rpName(p) + "," + zhex16(nn); }
+                else        s = "ADD " + ix + "," + rpName(p);
+                break;
+            case 2:
+                if (q == 0) {
+                    if (p == 0) s = "LD (BC),A";
+                    else if (p == 1) s = "LD (DE),A";
+                    else if (p == 2) { uint16_t nn = imm16(); s = "LD (" + zhex16(nn) + ")," + ix; }
+                    else { uint16_t nn = imm16(); s = "LD (" + zhex16(nn) + "),A"; }
+                } else {
+                    if (p == 0) s = "LD A,(BC)";
+                    else if (p == 1) s = "LD A,(DE)";
+                    else if (p == 2) { uint16_t nn = imm16(); s = "LD " + ix + ",(" + zhex16(nn) + ")"; }
+                    else { uint16_t nn = imm16(); s = "LD A,(" + zhex16(nn) + ")"; }
+                }
+                break;
+            case 3: s = (q ? "DEC " : "INC ") + rpName(p); break;
+            case 4: s = "INC " + regName(y); break;
+            case 5: s = "DEC " + regName(y); break;
+            case 6: { std::string dst = regName(y); uint8_t n = r.next();
+                      s = "LD " + dst + "," + zhex8(n); break; }
+            default: s = kZmisc[y]; break;
+            }
+            break;
+        case 1:
+            if (z == 6 && y == 6) s = "HALT";
+            else {
+                // When one operand is (IX+d), the other keeps its plain H/L name
+                // (the IXH/IXL substitution doesn't apply alongside a displacement).
+                const bool mem = (y == 6 || z == 6);
+                auto rn = [&](int i) -> std::string {
+                    if (i == 6)  return regName(6);              // (IX+d), reads disp
+                    if (mem)     return kZr[i];                  // no IXH/IXL remap
+                    return regName(i);
+                };
+                std::string dst = rn(y), src = rn(z);
+                s = "LD " + dst + "," + src;
+            }
+            break;
+        case 2: s = std::string(kZalu[y]) + regName(z); break;
+        case 3:
+            switch (z) {
+            case 0: s = "RET " + std::string(kZcc[y]); break;
+            case 1:
+                if (q == 0) s = "POP " + rp2Name(p);
+                else {
+                    if (p == 0) s = "RET";
+                    else if (p == 1) s = "EXX";
+                    else if (p == 2) s = "JP (" + ix + ")";
+                    else s = "LD SP," + ix;
+                }
+                break;
+            case 2: { uint16_t nn = imm16(); target = nn; hasTarget = true;
+                      s = "JP " + std::string(kZcc[y]) + "," + zhex16(nn); break; }
+            case 3:
+                if (y == 0) { uint16_t nn = imm16(); target = nn; hasTarget = true; s = "JP " + zhex16(nn); }
+                else if (y == 1) decodeCB();
+                else if (y == 2) { uint8_t n = r.next(); s = "OUT (" + zhex8(n) + "),A"; }
+                else if (y == 3) { uint8_t n = r.next(); s = "IN A,(" + zhex8(n) + ")"; }
+                else if (y == 4) s = "EX (SP)," + ix;
+                else if (y == 5) s = "EX DE,HL";
+                else if (y == 6) s = "DI";
+                else s = "EI";
+                break;
+            case 4: { uint16_t nn = imm16(); target = nn; hasTarget = true;
+                      s = "CALL " + std::string(kZcc[y]) + "," + zhex16(nn); break; }
+            case 5:
+                if (q == 0) s = "PUSH " + rp2Name(p);
+                else if (p == 0) { uint16_t nn = imm16(); target = nn; hasTarget = true; s = "CALL " + zhex16(nn); }
+                else s = "NOP";   // DD/ED/FD already consumed above
+                break;
+            case 6: s = std::string(kZalu[y]) + zhex8(r.next()); break;
+            default: target = static_cast<uint16_t>(y * 8); hasTarget = true;
+                     s = "RST " + zhex16(target); break;
+            }
+            break;
+        }
+    }
+
+    len = r.n;
+    return s;
+}
+
+}  // namespace
+
+std::vector<DisasmLine> Disassembler::disassembleZ80(
+    const Bus& bus, uint16_t startAddr, int count)
+{
+    std::vector<DisasmLine> result;
+    result.reserve(count);
+
+    uint16_t addr = startAddr;
+    for (int i = 0; i < count; ++i) {
+        DisasmLine line;
+        line.addr = addr;
+
+        int      len = 1;
+        uint16_t tgt = 0;
+        bool     hasTgt = false;
+        std::string text = z80One(bus, addr, len, tgt, hasTgt);
+
+        if (len < 1) len = 1;
+        if (len > 4) len = 4;
+        line.byteCount = len;
+        for (int b = 0; b < len; ++b)
+            line.bytes[b] = bus.read(static_cast<uint16_t>(addr + b));
+
+        // Split "MNEM operand" into the two display columns.
+        const size_t sp = text.find(' ');
+        if (sp == std::string::npos) {
+            line.mnemonic = text;
+        } else {
+            line.mnemonic = text.substr(0, sp);
+            line.operand  = text.substr(sp + 1);
+        }
+        line.targetAddr = tgt;
+        line.hasTarget  = hasTgt;
+
+        result.push_back(std::move(line));
+        addr = static_cast<uint16_t>(addr + len);
+    }
+    return result;
+}

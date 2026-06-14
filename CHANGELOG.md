@@ -17,6 +17,7 @@ Releases are tagged on the `main` branch; active development happens on `dev`.
 - **Terminal scrollback cap** — `termPrint()` now caps `termLines_` at 5000 entries (oldest trimmed) so a long-running session can't grow the buffer without bound
 
 ### Added
+- **Z80 disassembly** — the Disassembler now has a dedicated Zilog Z80 path (`Disassembler::disassembleZ80`) selected automatically when the Z80 is the active CPU; previously Z80 code was decoded with the 6502 table and shown as garbage. Implemented with the systematic x/y/z/p/q opcode decomposition so the `CB`/`ED`/`DD`/`FD`/`DDCB`/`FDCB` prefixes are sized and named correctly (including `(IX+d)`/`(IY+d)` displacement operands, ED block instructions like `LDIR`/`CPDR`, and `RST`/`JR`/`JP`/`CALL` target resolution); `DisasmLine::bytes` widened to 4 to hold the longest Z80 encodings. Verified against 31 hand-checked opcode encodings
 - **65C02 disassembly** — the Disassembler now decodes the WDC 65C02 (CMOS) instruction set when the 65C02 is the active CPU: two new addressing modes (`($zp)` zero-page indirect and `($abs,X)` absolute-indexed indirect) plus the CMOS-only opcodes (`BRA`, `STZ`, `TRB`/`TSB`, `INA`/`DEA`, `PHX`/`PHY`/`PLX`/`PLY`, `BIT #imm`, `BIT zp,X`/`abs,X`, and the `(zp)` forms of `ORA`/`AND`/`EOR`/`ADC`/`STA`/`LDA`/`CMP`/`SBC`); a `cmos` flag (default off) selects the overlay so NMOS 6502/6510/8502 disassembly is unchanged; `Application` passes the flag based on the active CPU's name
 
 ### Changed
