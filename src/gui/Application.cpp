@@ -357,6 +357,7 @@ void Application::render() {
     if (showMemView_)      drawMemoryViewer();
     if (showDesigner_) drawMachineDesigner();
     if (showPresetDialog_) drawPresetDialog();
+    drawModals();
 
     // Per-device panels — uses panelDevices() so fixed chips are found even
     // when they are not direct bus entries (e.g. inside C64IOSpace).
@@ -393,14 +394,18 @@ void Application::drawMenuBar() {
     // File ----------------------------------------------------------------
     if (ImGui::BeginMenu("File")) {
         if (ImGui::MenuItem("New Machine")) {
-            emulatorRunning_ = false;
-            machine_.resetAddressMap();
-            machine_.reset();
-            screenTexW_ = 0; screenTexH_ = 0;
-            disasmLabels_.clear();
-            disasmLabels_[Bus::CHAR_OUT_ADDR] = "CHAR_OUT";
-            allowRomEdit_    = false;
-            memColorsDirty_  = true;
+            confirm("Start a new machine? The current address map and CPU "
+                    "state will be cleared.", [this] {
+                emulatorRunning_ = false;
+                machine_.resetAddressMap();
+                machine_.reset();
+                screenTexW_ = 0; screenTexH_ = 0;
+                disasmLabels_.clear();
+                disasmLabels_[Bus::CHAR_OUT_ADDR] = "CHAR_OUT";
+                disasmViewAddr_  = 0x0000;
+                allowRomEdit_    = false;
+                memColorsDirty_  = true;
+            });
         }
 
         ImGui::Separator();
@@ -698,7 +703,64 @@ void Application::drawCpuState() {
 
 void Application::termPrint(const std::string& line) {
     termLines_.push_back(line);
+    // Cap scrollback so a long session can't grow the buffer without bound.
+    static constexpr size_t kMaxTermLines = 5000;
+    if (termLines_.size() > kMaxTermLines)
+        termLines_.erase(termLines_.begin(),
+                         termLines_.begin() + (termLines_.size() - kMaxTermLines));
     termScrollToBottom_ = true;
+}
+
+// ---------------------------------------------------------------------------
+// Modal dialogs
+// ---------------------------------------------------------------------------
+
+void Application::showError(const std::string& msg) {
+    errorPopupMsg_ = msg;
+}
+
+void Application::confirm(const std::string& msg, std::function<void()> onYes) {
+    confirmMsg_    = msg;
+    confirmAction_ = std::move(onYes);
+}
+
+void Application::drawModals() {
+    // Error modal --------------------------------------------------------
+    if (!errorPopupMsg_.empty() && !ImGui::IsPopupOpen("Error##modal"))
+        ImGui::OpenPopup("Error##modal");
+    if (ImGui::BeginPopupModal("Error##modal", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextWrapped("%s", errorPopupMsg_.c_str());
+        ImGui::Separator();
+        if (ImGui::Button("OK", ImVec2(120, 0))) {
+            errorPopupMsg_.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    // Confirm modal ------------------------------------------------------
+    if (!confirmMsg_.empty() && !ImGui::IsPopupOpen("Confirm##modal"))
+        ImGui::OpenPopup("Confirm##modal");
+    if (ImGui::BeginPopupModal("Confirm##modal", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextWrapped("%s", confirmMsg_.c_str());
+        ImGui::Separator();
+        if (ImGui::Button("Yes", ImVec2(120, 0))) {
+            auto action = confirmAction_;
+            confirmMsg_.clear();
+            confirmAction_ = nullptr;
+            ImGui::CloseCurrentPopup();
+            if (action) action();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+            confirmMsg_.clear();
+            confirmAction_ = nullptr;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
 }
 
 void Application::emulatorStep() {
@@ -749,6 +811,7 @@ void Application::loadRomDialog() {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file) {
         termPrint("[ROM] Error: cannot open file.");
+        showError("Could not open ROM file:\n" + path);
         return;
     }
 
@@ -757,6 +820,7 @@ void Application::loadRomDialog() {
 
     if (fileSize == 0) {
         termPrint("[ROM] Error: file is empty.");
+        showError("ROM file is empty:\n" + path);
         return;
     }
 
@@ -774,6 +838,8 @@ void Application::loadRomDialog() {
     if (isPrg) {
         if (fileSize < 3) {
             termPrint("[ROM] Error: PRG file too small (need at least 3 bytes).");
+            showError("PRG file too small — needs at least 3 bytes "
+                      "(2-byte load address + data).");
             return;
         }
         const uint8_t lo = static_cast<uint8_t>(file.get());
@@ -951,10 +1017,19 @@ void Application::loadUIState(const std::string& path) {
 
     if (ui.contains("peripheral_images") && ui["peripheral_images"].is_object()) {
         const auto& pi = ui["peripheral_images"];
+        std::string restoreErrors;
         for (auto* p : peripherals_) {
-            if (pi.contains(p->peripheralName()))
-                p->mount(pi[p->peripheralName()].get<std::string>());
+            if (!pi.contains(p->peripheralName())) continue;
+            const auto img = pi[p->peripheralName()].get<std::string>();
+            if (!p->mount(img)) {
+                termPrint(std::string("[Restore] Could not remount ") +
+                          p->peripheralName() + ": " + p->mountError());
+                restoreErrors += std::string(p->peripheralName()) + ": " +
+                                 p->mountError() + "\n";
+            }
         }
+        if (!restoreErrors.empty())
+            showError("Some saved media could not be remounted:\n\n" + restoreErrors);
     }
 
     if (ui.value("drive1541_warp", false))
@@ -1050,16 +1125,19 @@ void Application::drawPeripheralsMenu() {
                 if (ImGui::MenuItem("Mount .bin...")) {
                     std::string path = FileDialog::openFile("Epyx FastLoad ROM\0*.bin\0All files\0*.*\0");
                     if (!path.empty()) {
-                        if (!p->mount(path))
+                        if (!p->mount(path)) {
                             termPrint("[Cart] Mount failed: " + p->mountError());
-                        else
+                            showError("Failed to mount cartridge:\n" + p->mountError());
+                        } else {
                             termPrint("[Cart] Mounted: " + path);
+                        }
                     }
                 }
             } else {
                 auto mountDrive = [&](const std::string& path) {
                     if (!p->mount(path)) {
                         termPrint("[Drive] Mount failed: " + p->mountError());
+                        showError("Failed to mount disk/tape image:\n" + p->mountError());
                         return;
                     }
                     termPrint("[Drive] Mounted: " + path);

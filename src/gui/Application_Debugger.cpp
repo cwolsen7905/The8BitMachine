@@ -20,7 +20,7 @@ void Application::drawBreakpoints() {
     std::sort(sorted.begin(), sorted.end());
 
     if (ImGui::Button("Clear All") && !breakpoints_.empty())
-        breakpoints_.clear();
+        confirm("Remove all breakpoints?", [this] { breakpoints_.clear(); });
 
     ImGui::Separator();
 
@@ -74,7 +74,7 @@ void Application::drawWatchpoints() {
     }
 
     if (ImGui::Button("Clear All") && !watchpoints_.empty())
-        watchpoints_.clear();
+        confirm("Remove all watchpoints?", [this] { watchpoints_.clear(); });
 
     ImGui::Separator();
 

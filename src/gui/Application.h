@@ -224,6 +224,11 @@ private:
     bool                     termScrollToBottom_ = false;
     char                     termInput_[256];
 
+    // Modal dialog state ----------------------------------------------------
+    std::string              errorPopupMsg_;     // non-empty → error modal shown
+    std::string              confirmMsg_;        // non-empty → confirm modal shown
+    std::function<void()>    confirmAction_;     // run when confirm is accepted
+
     // Line buffer for characters arriving from the CPU via CHAR_OUT ($F000).
     std::string              ioLineBuf_;
 
@@ -255,6 +260,11 @@ private:
     void drawDesignerAddBankController();
 
     void termPrint(const std::string& line);
+
+    // Modal dialogs ---------------------------------------------------------
+    void showError(const std::string& msg);                 // queue an error modal
+    void confirm(const std::string& msg, std::function<void()> onYes);
+    void drawModals();                                      // render queued popups
 
     void emulatorStep();
     void emulatorReset();
