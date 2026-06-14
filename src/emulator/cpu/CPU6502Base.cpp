@@ -5,6 +5,17 @@
 #include <sstream>
 
 // ============================================================================
+// 6502 hardware vectors and the (fixed) stack page
+// ============================================================================
+
+namespace {
+constexpr uint16_t kStackBase  = 0x0100;  // stack lives in page 1
+constexpr uint16_t kVecNMI     = 0xFFFA;  // NMI vector (lo/hi)
+constexpr uint16_t kVecReset   = 0xFFFC;  // RESET vector (lo/hi)
+constexpr uint16_t kVecIRQ     = 0xFFFE;  // IRQ/BRK vector (lo/hi)
+}  // namespace
+
+// ============================================================================
 // NMOS dispatch table  (called by both CPU8502 and CPU65C02 constructors)
 // ============================================================================
 
@@ -166,8 +177,8 @@ void CPU6502Base::buildNMOSTable() {
 uint8_t CPU6502Base::busRead(uint16_t addr)          { return bus_ ? bus_->read(addr) : 0x00; }
 void    CPU6502Base::busWrite(uint16_t addr, uint8_t v) { if (bus_) bus_->write(addr, v); }
 
-void    CPU6502Base::stackPush(uint8_t val) { busWrite(0x0100 + SP, val); --SP; }
-uint8_t CPU6502Base::stackPop()             { ++SP; return busRead(0x0100 + SP); }
+void    CPU6502Base::stackPush(uint8_t val) { busWrite(kStackBase + SP, val); --SP; }
+uint8_t CPU6502Base::stackPop()             { ++SP; return busRead(kStackBase + SP); }
 
 void CPU6502Base::setFlag(Flags f, bool v) {
     if (v) P |=  static_cast<uint8_t>(f);
@@ -189,8 +200,8 @@ uint8_t CPU6502Base::fetch() {
 void CPU6502Base::connectBus(Bus* bus) { bus_ = bus; }
 
 void CPU6502Base::reset() {
-    uint16_t lo = busRead(0xFFFC);
-    uint16_t hi = busRead(0xFFFD);
+    uint16_t lo = busRead(kVecReset);
+    uint16_t hi = busRead(kVecReset + 1);
     PC = (hi << 8) | lo;
     A = X = Y = 0x00;
     SP       = 0xFD;
@@ -222,8 +233,8 @@ void CPU6502Base::irq() {
     setFlag(B, false); setFlag(U, true);
     stackPush(P);
     setFlag(I, true);
-    uint16_t lo = busRead(0xFFFE);
-    uint16_t hi = busRead(0xFFFF);
+    uint16_t lo = busRead(kVecIRQ);
+    uint16_t hi = busRead(kVecIRQ + 1);
     PC = (hi << 8) | lo;
     cycles_ = 7;
 }
@@ -234,8 +245,8 @@ void CPU6502Base::nmi() {
     setFlag(B, false); setFlag(U, true);
     stackPush(P);
     setFlag(I, true);
-    uint16_t lo = busRead(0xFFFA);
-    uint16_t hi = busRead(0xFFFB);
+    uint16_t lo = busRead(kVecNMI);
+    uint16_t hi = busRead(kVecNMI + 1);
     PC = (hi << 8) | lo;
     cycles_ = 8;
 }
@@ -463,14 +474,24 @@ uint8_t CPU6502Base::CMP() { fetch(); uint16_t t=static_cast<uint16_t>(A)-static
 uint8_t CPU6502Base::CPX() { fetch(); uint16_t t=static_cast<uint16_t>(X)-static_cast<uint16_t>(fetched_); setFlag(C,X>=fetched_); setFlag(Z,(t&0xFF)==0); setFlag(N,t&0x80); return 0; }
 uint8_t CPU6502Base::CPY() { fetch(); uint16_t t=static_cast<uint16_t>(Y)-static_cast<uint16_t>(fetched_); setFlag(C,Y>=fetched_); setFlag(Z,(t&0xFF)==0); setFlag(N,t&0x80); return 0; }
 
-uint8_t CPU6502Base::BCC() { if (!getFlag(C)) { ++cycles_; addrAbs_=PC+addrRel_; if((addrAbs_&0xFF00)!=(PC&0xFF00))++cycles_; PC=addrAbs_; } return 0; }
-uint8_t CPU6502Base::BCS() { if ( getFlag(C)) { ++cycles_; addrAbs_=PC+addrRel_; if((addrAbs_&0xFF00)!=(PC&0xFF00))++cycles_; PC=addrAbs_; } return 0; }
-uint8_t CPU6502Base::BEQ() { if ( getFlag(Z)) { ++cycles_; addrAbs_=PC+addrRel_; if((addrAbs_&0xFF00)!=(PC&0xFF00))++cycles_; PC=addrAbs_; } return 0; }
-uint8_t CPU6502Base::BNE() { if (!getFlag(Z)) { ++cycles_; addrAbs_=PC+addrRel_; if((addrAbs_&0xFF00)!=(PC&0xFF00))++cycles_; PC=addrAbs_; } return 0; }
-uint8_t CPU6502Base::BMI() { if ( getFlag(N)) { ++cycles_; addrAbs_=PC+addrRel_; if((addrAbs_&0xFF00)!=(PC&0xFF00))++cycles_; PC=addrAbs_; } return 0; }
-uint8_t CPU6502Base::BPL() { if (!getFlag(N)) { ++cycles_; addrAbs_=PC+addrRel_; if((addrAbs_&0xFF00)!=(PC&0xFF00))++cycles_; PC=addrAbs_; } return 0; }
-uint8_t CPU6502Base::BVC() { if (!getFlag(V)) { ++cycles_; addrAbs_=PC+addrRel_; if((addrAbs_&0xFF00)!=(PC&0xFF00))++cycles_; PC=addrAbs_; } return 0; }
-uint8_t CPU6502Base::BVS() { if ( getFlag(V)) { ++cycles_; addrAbs_=PC+addrRel_; if((addrAbs_&0xFF00)!=(PC&0xFF00))++cycles_; PC=addrAbs_; } return 0; }
+uint8_t CPU6502Base::doBranch(bool taken) {
+    if (taken) {
+        ++cycles_;
+        addrAbs_ = PC + addrRel_;
+        if ((addrAbs_ & 0xFF00) != (PC & 0xFF00)) ++cycles_;  // page-cross penalty
+        PC = addrAbs_;
+    }
+    return 0;
+}
+
+uint8_t CPU6502Base::BCC() { return doBranch(!getFlag(C)); }
+uint8_t CPU6502Base::BCS() { return doBranch( getFlag(C)); }
+uint8_t CPU6502Base::BEQ() { return doBranch( getFlag(Z)); }
+uint8_t CPU6502Base::BNE() { return doBranch(!getFlag(Z)); }
+uint8_t CPU6502Base::BMI() { return doBranch( getFlag(N)); }
+uint8_t CPU6502Base::BPL() { return doBranch(!getFlag(N)); }
+uint8_t CPU6502Base::BVC() { return doBranch(!getFlag(V)); }
+uint8_t CPU6502Base::BVS() { return doBranch( getFlag(V)); }
 
 uint8_t CPU6502Base::JMP() { PC = addrAbs_; return 0; }
 uint8_t CPU6502Base::JSR() {
@@ -487,7 +508,7 @@ uint8_t CPU6502Base::BRK() {
     setFlag(I, true);
     stackPush((PC >> 8) & 0xFF); stackPush(PC & 0xFF);
     setFlag(B, true); stackPush(P); setFlag(B, false);
-    uint16_t lo = busRead(0xFFFE); uint16_t hi = busRead(0xFFFF);
+    uint16_t lo = busRead(kVecIRQ); uint16_t hi = busRead(kVecIRQ + 1);
     PC = (hi << 8) | lo;  return 0;
 }
 uint8_t CPU6502Base::RTI() {
