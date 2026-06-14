@@ -638,6 +638,28 @@ void Application::drawDesignerAddBankController() {
 // ---------------------------------------------------------------------------
 // Keyboard matrix — injected as a collapsible section into the owning device panel
 // ---------------------------------------------------------------------------
+// Renders one key-matrix cell button with the held/last-pressed styling and
+// reports whether it was pressed or released this frame.  Callers own the
+// label/tooltip text and the device-specific key mapping.
+Application::KeyCellEvent Application::drawKeyCell(
+    const char* label, const std::string& idSuffix,
+    bool held, bool isLast, const ImVec2& size)
+{
+    ImVec4 bg = held   ? ImVec4(0.1f,0.7f,0.2f,0.6f)
+              : isLast ? ImVec4(0.2f,0.4f,0.8f,0.4f)
+                       : ImVec4(0.15f,0.15f,0.15f,1.0f);
+    ImVec4 fg = (held || isLast) ? ImVec4(1,1,1,1) : ImVec4(0.6f,0.6f,0.6f,1.0f);
+    ImGui::PushStyleColor(ImGuiCol_Button,        bg);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bg);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.1f,0.7f,0.2f,0.8f));
+    ImGui::PushStyleColor(ImGuiCol_Text,          fg);
+    ImGui::Button((std::string(label) + idSuffix).c_str(), size);
+    ImGui::PopStyleColor(4);
+    if (ImGui::IsItemActivated())   return KeyCellEvent::Pressed;
+    if (ImGui::IsItemDeactivated()) return KeyCellEvent::Released;
+    return KeyCellEvent::None;
+}
+
 void Application::injectC64KeyMatrix(const char* title, bool* open) {
     if (!ImGui::Begin(title, open)) { ImGui::End(); return; }
 
@@ -685,24 +707,14 @@ void Application::injectC64KeyMatrix(const char* title, bool* open) {
                 if (keyMatrixTranspose_) std::swap(kCol, kRow);
                 const bool held   = machine_.cia1().keyState(kCol, kRow);
                 const bool isLast = (lastKeyCol_ == col && lastKeyRow_ == row);
-                ImVec4 bg = held   ? ImVec4(0.1f,0.7f,0.2f,0.6f)
-                          : isLast ? ImVec4(0.2f,0.4f,0.8f,0.4f)
-                                   : ImVec4(0.15f,0.15f,0.15f,1.0f);
-                ImVec4 fg = (held || isLast) ? ImVec4(1,1,1,1) : ImVec4(0.6f,0.6f,0.6f,1.0f);
-                ImGui::PushStyleColor(ImGuiCol_Button,        bg);
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bg);
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.1f,0.7f,0.2f,0.8f));
-                ImGui::PushStyleColor(ImGuiCol_Text,          fg);
                 char id[16]; std::snprintf(id, sizeof(id), "##k%d%d", col, row);
-                ImGui::Button((std::string(kLabel[col][row]) + id).c_str(), cellSz);
-                ImGui::PopStyleColor(4);
-                if (ImGui::IsItemActivated()) {
+                KeyCellEvent ev = drawKeyCell(kLabel[col][row], id, held, isLast, cellSz);
+                if (ev == KeyCellEvent::Pressed) {
                     int ciaCol = col, ciaRow = row;
                     if (keyMatrixTranspose_) std::swap(ciaCol, ciaRow);
                     machine_.cia1().setKey(ciaCol, ciaRow, true);
                     lastKeyCol_ = col; lastKeyRow_ = row; lastKeyName_ = kLabel[col][row];
-                }
-                if (ImGui::IsItemDeactivated()) {
+                } else if (ev == KeyCellEvent::Released) {
                     int ciaCol = col, ciaRow = row;
                     if (keyMatrixTranspose_) std::swap(ciaCol, ciaRow);
                     machine_.cia1().setKey(ciaCol, ciaRow, false);
@@ -749,23 +761,14 @@ void Application::injectSpectrumKeyMatrix(const char* title, bool* open) {
                 ImGui::SameLine();
                 const bool held   = machine_.ula().keyState(row, bit);
                 const bool isLast = (lastKeyCol_ == row && lastKeyRow_ == bit);
-                ImVec4 bg = held   ? ImVec4(0.1f,0.7f,0.2f,0.6f)
-                          : isLast ? ImVec4(0.2f,0.4f,0.8f,0.4f)
-                                   : ImVec4(0.15f,0.15f,0.15f,1.0f);
-                ImVec4 fg = (held || isLast) ? ImVec4(1,1,1,1) : ImVec4(0.6f,0.6f,0.6f,1.0f);
-                ImGui::PushStyleColor(ImGuiCol_Button,        bg);
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bg);
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.1f,0.7f,0.2f,0.8f));
-                ImGui::PushStyleColor(ImGuiCol_Text,          fg);
                 char id[16]; std::snprintf(id, sizeof(id), "##s%d%d", row, bit);
-                ImGui::Button((std::string(kLabel[row][bit]) + id).c_str(), cellSz);
-                ImGui::PopStyleColor(4);
-                if (ImGui::IsItemActivated()) {
+                KeyCellEvent ev = drawKeyCell(kLabel[row][bit], id, held, isLast, cellSz);
+                if (ev == KeyCellEvent::Pressed) {
                     machine_.ula().setKey(row, bit, true);
                     lastKeyCol_ = row; lastKeyRow_ = bit; lastKeyName_ = kLabel[row][bit];
-                }
-                if (ImGui::IsItemDeactivated())
+                } else if (ev == KeyCellEvent::Released) {
                     machine_.ula().setKey(row, bit, false);
+                }
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("row %d, bit %d = %s\nClick to inject keypress",
                                       row, bit, kLabel[row][bit]);

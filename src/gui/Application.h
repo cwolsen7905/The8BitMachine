@@ -240,6 +240,9 @@ private:
 
     void drawMenuBar();
     void drawPeripheralsMenu();
+    void drawPeripheralEntry(IPeripheral* p);      // one peripheral's menu row
+    void mountDriveImage(IPeripheral* p, const std::string& path);
+    void performWarpLoad();                         // KERNAL ILOAD trap handler
     void rewirePeripherals(const std::string& presetType);
     void drawScreen();
     void drawTerminal();
@@ -279,4 +282,9 @@ private:
     void buildActivePreset();
     void injectC64KeyMatrix(const char* title, bool* open);
     void injectSpectrumKeyMatrix(const char* title, bool* open);
+
+    // Shared key-matrix cell renderer used by both keyboard injectors.
+    enum class KeyCellEvent { None, Pressed, Released };
+    KeyCellEvent drawKeyCell(const char* label, const std::string& idSuffix,
+                             bool held, bool isLast, const ImVec2& size);
 };

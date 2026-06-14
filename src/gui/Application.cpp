@@ -1091,113 +1091,140 @@ void Application::loadMachineConfigDialog() {
 // Peripherals menu
 // ---------------------------------------------------------------------------
 
+// C64 KERNAL zero-page locations used by the warp-load trap.
+namespace C64ZP {
+    constexpr uint16_t FN_LEN    = 0x00B7;  // current filename length
+    constexpr uint16_t FN_PTR_LO = 0x00BB;  // filename pointer (lo/hi)
+    constexpr uint16_t FN_PTR_HI = 0x00BC;
+    constexpr uint16_t STATUS    = 0x0090;  // I/O status byte ($04 = file not found)
+    constexpr uint16_t LOAD_LO   = 0x00AC;  // load start address (lo/hi)
+    constexpr uint16_t LOAD_HI   = 0x00AD;
+    constexpr uint16_t END_LO    = 0x00AE;  // load end address (lo/hi)
+    constexpr uint16_t END_HI    = 0x00AF;
+}
+
+// KERNAL ILOAD trap: read the requested filename from zero page, serve it from
+// the mounted image straight into RAM, and set the status bytes the KERNAL
+// expects so the caller sees a clean successful load.
+void Application::performWarpLoad() {
+    Memory& ram = machine_.ram();
+    uint8_t  fnLen = ram.read(C64ZP::FN_LEN);
+    uint16_t fnPtr = ram.read(C64ZP::FN_PTR_LO) |
+                     (uint16_t(ram.read(C64ZP::FN_PTR_HI)) << 8);
+
+    // Convert PETSCII filename to ASCII (same mapping as D64/T64).
+    std::string name;
+    for (int i = 0; i < fnLen; ++i) {
+        uint8_t c = ram.read(fnPtr + i);
+        if (c >= 0x41 && c <= 0x5A) c = c - 0x41 + 'a';
+        else if (c >= 0x61 && c <= 0x7A) c = c - 0x61 + 'A';
+        name += static_cast<char>(c);
+    }
+
+    auto data = drive1541_.loadFile(name);
+    if (data.size() < 3) {
+        ram.write(C64ZP::STATUS, 0x04);   // file not found
+        return;
+    }
+
+    uint16_t loadAddr = data[0] | (uint16_t(data[1]) << 8);
+    for (size_t i = 2; i < data.size(); ++i)
+        ram.write(loadAddr + static_cast<uint16_t>(i - 2), data[i]);
+    uint16_t endAddr = loadAddr + static_cast<uint16_t>(data.size() - 2);
+
+    ram.write(C64ZP::STATUS, 0x00);
+    ram.write(C64ZP::LOAD_LO, loadAddr & 0xFF);
+    ram.write(C64ZP::LOAD_HI, loadAddr >> 8);
+    ram.write(C64ZP::END_LO,  endAddr & 0xFF);
+    ram.write(C64ZP::END_HI,  endAddr >> 8);
+
+    char buf[5];
+    std::snprintf(buf, sizeof buf, "%04X", loadAddr);
+    termPrint(std::string("[Warp] Loaded \"") + name + "\" at $" + buf);
+}
+
+// Mount a disk/tape image on a drive peripheral and (for the 1541) arm the
+// warp-load trap.
+void Application::mountDriveImage(IPeripheral* p, const std::string& path) {
+    if (!p->mount(path)) {
+        termPrint("[Drive] Mount failed: " + p->mountError());
+        showError("Failed to mount disk/tape image:\n" + p->mountError());
+        return;
+    }
+    termPrint("[Drive] Mounted: " + path);
+    if (dynamic_cast<Drive1541*>(p)) {
+        machine_.warpLoadTrap().onActivate_ = [this]() { performWarpLoad(); };
+        if (drive1541_.warpEnabled()) machine_.enableWarpLoad();
+    }
+}
+
+void Application::drawPeripheralEntry(IPeripheral* p) {
+    ImGui::PushID(p);
+
+    // Panel toggle (if the peripheral has one)
+    if (dynamic_cast<IHasPanel*>(p)) {
+        bool& vis = peripheralPanelVisible_[p];
+        ImGui::MenuItem(p->peripheralName(), nullptr, &vis);
+    } else {
+        ImGui::TextDisabled("%s", p->peripheralName());
+    }
+
+    // Mount / Eject sub-menu
+    if (ImGui::BeginMenu("  Image")) {
+        if (!p->mountedImage().empty()) {
+            ImGui::TextDisabled("%s", p->mountedImage().c_str());
+            if (ImGui::MenuItem("Eject")) {
+                p->eject();
+                if (dynamic_cast<Drive1541*>(p)) {
+                    machine_.disableWarpLoad();
+                    machine_.warpLoadTrap().onActivate_ = nullptr;
+                }
+            }
+        } else {
+            ImGui::TextDisabled("(no image)");
+        }
+
+        if (dynamic_cast<EpyxFastLoad*>(p)) {
+            if (ImGui::MenuItem("Mount .bin...")) {
+                std::string path = FileDialog::openFile("Epyx FastLoad ROM\0*.bin\0All files\0*.*\0");
+                if (!path.empty()) {
+                    if (!p->mount(path)) {
+                        termPrint("[Cart] Mount failed: " + p->mountError());
+                        showError("Failed to mount cartridge:\n" + p->mountError());
+                    } else {
+                        termPrint("[Cart] Mounted: " + path);
+                    }
+                }
+            }
+        } else {
+            if (ImGui::MenuItem("Mount .d64...")) {
+                std::string path = FileDialog::openFile("D64 disk image\0*.d64\0All files\0*.*\0");
+                if (!path.empty()) mountDriveImage(p, path);
+            }
+            if (ImGui::MenuItem("Mount .t64...")) {
+                std::string path = FileDialog::openFile("T64 tape image\0*.t64\0All files\0*.*\0");
+                if (!path.empty()) mountDriveImage(p, path);
+            }
+        }
+        ImGui::EndMenu();
+    }
+
+    if (!p->mountError().empty()) {
+        ImGui::SameLine();
+        ImGui::TextColored({ 1,0.3f,0.3f,1 }, "!");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", p->mountError().c_str());
+    }
+
+    ImGui::PopID();
+}
+
 void Application::drawPeripheralsMenu() {
     if (peripherals_.empty()) return;
-
     if (!ImGui::BeginMenu("Peripherals")) return;
 
-    for (IPeripheral* p : peripherals_) {
-        ImGui::PushID(p);
-
-        // Panel toggle (if the peripheral has one)
-        if (dynamic_cast<IHasPanel*>(p)) {
-            bool& vis = peripheralPanelVisible_[p];
-            ImGui::MenuItem(p->peripheralName(), nullptr, &vis);
-        } else {
-            ImGui::TextDisabled("%s", p->peripheralName());
-        }
-
-        // Mount / Eject sub-menu
-        if (ImGui::BeginMenu("  Image")) {
-            if (!p->mountedImage().empty()) {
-                ImGui::TextDisabled("%s", p->mountedImage().c_str());
-                if (ImGui::MenuItem("Eject")) {
-                    p->eject();
-                    if (dynamic_cast<Drive1541*>(p)) {
-                        machine_.disableWarpLoad();
-                        machine_.warpLoadTrap().onActivate_ = nullptr;
-                    }
-                }
-            } else {
-                ImGui::TextDisabled("(no image)");
-            }
-            if (dynamic_cast<EpyxFastLoad*>(p)) {
-                if (ImGui::MenuItem("Mount .bin...")) {
-                    std::string path = FileDialog::openFile("Epyx FastLoad ROM\0*.bin\0All files\0*.*\0");
-                    if (!path.empty()) {
-                        if (!p->mount(path)) {
-                            termPrint("[Cart] Mount failed: " + p->mountError());
-                            showError("Failed to mount cartridge:\n" + p->mountError());
-                        } else {
-                            termPrint("[Cart] Mounted: " + path);
-                        }
-                    }
-                }
-            } else {
-                auto mountDrive = [&](const std::string& path) {
-                    if (!p->mount(path)) {
-                        termPrint("[Drive] Mount failed: " + p->mountError());
-                        showError("Failed to mount disk/tape image:\n" + p->mountError());
-                        return;
-                    }
-                    termPrint("[Drive] Mounted: " + path);
-                    if (dynamic_cast<Drive1541*>(p)) {
-                        machine_.warpLoadTrap().onActivate_ = [this]() {
-                            Memory& ram = machine_.ram();
-                            uint8_t fnLen = ram.read(0x00B7);
-                            uint16_t fnPtr = ram.read(0x00BB) |
-                                             (uint16_t(ram.read(0x00BC)) << 8);
-                            // Convert PETSCII filename to ASCII (same mapping as D64/T64)
-                            std::string name;
-                            for (int i = 0; i < fnLen; ++i) {
-                                uint8_t c = ram.read(fnPtr + i);
-                                if (c >= 0x41 && c <= 0x5A) c = c - 0x41 + 'a';
-                                else if (c >= 0x61 && c <= 0x7A) c = c - 0x61 + 'A';
-                                name += static_cast<char>(c);
-                            }
-                            auto data = drive1541_.loadFile(name);
-                            if (data.size() < 3) {
-                                ram.write(0x0090, 0x04);  // STATUS = file not found
-                                return;
-                            }
-                            uint16_t loadAddr = data[0] | (uint16_t(data[1]) << 8);
-                            for (size_t i = 2; i < data.size(); ++i)
-                                ram.write(loadAddr + static_cast<uint16_t>(i - 2), data[i]);
-                            uint16_t endAddr = loadAddr + static_cast<uint16_t>(data.size() - 2);
-                            ram.write(0x0090, 0x00);
-                            ram.write(0x00AC, loadAddr & 0xFF);
-                            ram.write(0x00AD, loadAddr >> 8);
-                            ram.write(0x00AE, endAddr & 0xFF);
-                            ram.write(0x00AF, endAddr >> 8);
-                            termPrint(std::string("[Warp] Loaded \"") + name +
-                                      "\" at $" + [](uint16_t a){
-                                          char buf[5]; snprintf(buf, 5, "%04X", a); return std::string(buf);
-                                      }(loadAddr));
-                        };
-                        if (drive1541_.warpEnabled()) machine_.enableWarpLoad();
-                    }
-                };
-                if (ImGui::MenuItem("Mount .d64...")) {
-                    std::string path = FileDialog::openFile("D64 disk image\0*.d64\0All files\0*.*\0");
-                    if (!path.empty()) mountDrive(path);
-                }
-                if (ImGui::MenuItem("Mount .t64...")) {
-                    std::string path = FileDialog::openFile("T64 tape image\0*.t64\0All files\0*.*\0");
-                    if (!path.empty()) mountDrive(path);
-                }
-            }
-            ImGui::EndMenu();
-        }
-
-        if (!p->mountError().empty()) {
-            ImGui::SameLine();
-            ImGui::TextColored({ 1,0.3f,0.3f,1 }, "!");
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("%s", p->mountError().c_str());
-        }
-
-        ImGui::PopID();
-    }
+    for (IPeripheral* p : peripherals_)
+        drawPeripheralEntry(p);
 
     ImGui::EndMenu();
 }
