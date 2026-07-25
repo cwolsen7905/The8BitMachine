@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <mutex>
 #include <sstream>
+#include <string>
 #include <iomanip>
 
 // ---------------------------------------------------------------------------
@@ -41,14 +42,44 @@
 //   - Ring mod: when RING+TRI set, triangle fold uses XOR with source MSB
 //   - Chamberlin state-variable filter: LP, BP, HP modes selectable
 //   - 23-bit noise LFSR with correct 6581 tap positions
+//
+// Chip model:
+//   The 6581 (NMOS) and 8580 (HMOS-II) differ substantially in their filter.
+//   The 8580 cutoff is linear over 0–12.5 kHz; the 6581 cutoff spans only
+//   ~220 Hz–7.5 kHz with a pronounced knee, which is why 6581 tunes sound
+//   much darker.  setModel() selects between them; the choice is persisted in
+//   the machine config as "sid_model".
 // ---------------------------------------------------------------------------
 
 class SID6581 : public IBusDevice, public IHasPanel {
 public:
+    // Chip revision — selects the filter cutoff curve (see header comment).
+    enum class Model : uint8_t { MOS6581 = 0, MOS8580 = 1 };
+
     SID6581() { reset(); }
 
+    void  setModel(Model m) { std::lock_guard<std::mutex> lock(mutex_); model_ = m; }
+    Model model() const     { std::lock_guard<std::mutex> lock(mutex_); return model_; }
+
+    // Config-file spelling of the model ("6581" / "8580").
+    const char* modelName() const {
+        return model() == Model::MOS8580 ? "8580" : "6581";
+    }
+    void setModelByName(const std::string& n) {
+        setModel(n == "8580" ? Model::MOS8580 : Model::MOS6581);
+    }
+
+    // Cutoff register (0–2047) → Hz for the given model.  Exposed so the panel
+    // can show the real frequency instead of only the raw register value.
+    static float cutoffHz(uint16_t fcReg, Model m);
+
+    // Resonance nibble (0–15) → filter damping (1/Q).
+    static float dampingForRes(uint8_t res);
+
     // IBusDevice
-    const char* deviceName() const override { return "MOS 6581 SID"; }
+    const char* deviceName() const override {
+        return model() == Model::MOS8580 ? "MOS 8580 SID" : "MOS 6581 SID";
+    }
     void        reset()            override;
     void        clock()            override {}
     uint8_t     read (uint16_t offset) const override;
@@ -114,9 +145,15 @@ public:
 private:
     enum : uint8_t { ENV_ATK=0, ENV_DEC=1, ENV_SUS=2, ENV_REL=3, ENV_OFF=4 };
 
+    // Noise shift-register seeds.  These deliberately differ: reSID resets the
+    // register to 0x7FFFFE at power-on, whereas holding the TEST bit steadily
+    // fills it with ones, so TEST converges on 0x7FFFFF.
+    static constexpr uint32_t kLfsrReset    = 0x7FFFFE;
+    static constexpr uint32_t kLfsrTestFill = 0x7FFFFF;
+
     struct Voice {
         uint32_t phase    = 0;
-        uint32_t lfsr     = 0x7FFFF8;
+        uint32_t lfsr     = kLfsrReset;
         float    envLevel = 0.0f;
         uint8_t  envStage = ENV_OFF;
         bool     prevGate = false;
@@ -134,8 +171,12 @@ private:
     std::atomic<uint8_t> osc3Out_{0};
     std::atomic<uint8_t> env3Out_{0};
 
-    mutable std::mutex mutex_;  // protects regs_[] and mutedVoice_[]
+    mutable std::mutex mutex_;  // protects regs_[], mutedVoice_[] and model_
     bool mutedVoice_[3] = {};
+
+    // Chip revision.  Not cleared by reset() — it is a hardware property of the
+    // machine, not runtime state, and is restored from the machine config.
+    Model model_ = Model::MOS6581;
 
     static const float kAttackMs[16];
     static const float kDecRelMs[16];

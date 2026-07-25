@@ -18,7 +18,18 @@
 ;         hard-sync overtones that track the melody)
 ;     V2: triangle with RING mod driven by V3 oscillator (metallic timbre)
 ;
-; After section 3 the demo loops back to section 1.
+;   Section 4 — Resonance sweep
+;     V1: sawtooth routed through the LP filter at a fixed cutoff, with
+;         resonance stepping 0→15 across the notes.  At res=15 Q is
+;         theoretically unlimited on real hardware, so this section is the
+;         check that high resonance stays bounded instead of self-oscillating.
+;
+;   Section 5 — Filter mode cycle
+;     V1: sawtooth routed through the filter at fixed cutoff and resonance,
+;         cycling LP → BP → HP one scale pass each, so all three filter
+;         outputs are exercised (the BP and HP paths are otherwise untested).
+;
+; After section 5 the demo loops back to section 1.
 ;
 ; Delay loops are calibrated for the ~60 kHz debug speed.
 ;
@@ -67,6 +78,8 @@ PULSE  = $40
 NOTE_IDX  = $00
 SECT_CTR  = $01   ; section repeat counter
 FILT_HI   = $02   ; current filter cutoff hi byte (section 2)
+RES_CTR   = $03   ; current resonance nibble (section 4)
+MODE_IDX  = $04   ; index into filter_modes (section 5)
 
         .code
 
@@ -334,6 +347,137 @@ s3_next_pass:
         dec SECT_CTR
         bne s3_loop
 
+        ; Silence the sync/ring voices before the filter sections
+        lda #$00
+        sta SID + V2_CTRL
+        sta SID + V3_CTRL
+
+; ============================================================
+; Section 4 — resonance sweep (fixed cutoff, res 0 → 15)
+; ============================================================
+section4:
+        lda #'4'
+        sta CHAR_OUT
+        lda #$0A
+        sta CHAR_OUT
+
+        ; Fixed cutoff in the middle of the 6581 knee (fcReg = $200)
+        lda #$00
+        sta SID + FC_LO
+        lda #$40
+        sta SID + FC_HI
+
+        ; LP mode, volume = 15
+        lda #$1F
+        sta SID + MODE_VOL
+
+        ; Voice 1 sawtooth melody through the filter
+        lda #$02
+        sta SID + V1_AD
+        lda #$60
+        sta SID + V1_SR
+
+        lda #0
+        sta NOTE_IDX
+        sta RES_CTR
+        lda #2
+        sta SECT_CTR
+
+s4_loop:
+        ldx NOTE_IDX
+        lda note_hi,x
+        beq s4_next_pass
+
+        ; RES_FILT = (res << 4) | FILT1
+        lda RES_CTR
+        and #$0F
+        asl a
+        asl a
+        asl a
+        asl a
+        ora #$01
+        sta SID + RES_FILT
+
+        lda note_lo,x
+        sta SID + V1_FREQL
+        lda note_hi,x
+        sta SID + V1_FREQH
+        lda #(SAW | GATE)
+        sta SID + V1_CTRL
+        jsr note_delay
+        lda #SAW
+        sta SID + V1_CTRL
+        jsr gap_delay
+
+        inc RES_CTR
+        inc NOTE_IDX
+        jmp s4_loop
+
+s4_next_pass:
+        lda #0
+        sta NOTE_IDX
+        dec SECT_CTR
+        bne s4_loop
+
+; ============================================================
+; Section 5 — filter mode cycle (LP → BP → HP)
+; ============================================================
+section5:
+        lda #'5'
+        sta CHAR_OUT
+        lda #$0A
+        sta CHAR_OUT
+
+        ; Fixed cutoff and a moderate resonance for all three modes
+        lda #$00
+        sta SID + FC_LO
+        lda #$50
+        sta SID + FC_HI
+        lda #$A1                ; res = 10, FILT1
+        sta SID + RES_FILT
+
+        lda #0
+        sta MODE_IDX
+
+s5_mode:
+        ldx MODE_IDX
+        lda filter_modes,x
+        beq s5_done
+        sta SID + MODE_VOL
+
+        lda #0
+        sta NOTE_IDX
+
+s5_loop:
+        ldx NOTE_IDX
+        lda note_hi,x
+        beq s5_next_mode
+
+        lda note_lo,x
+        sta SID + V1_FREQL
+        lda note_hi,x
+        sta SID + V1_FREQH
+        lda #(SAW | GATE)
+        sta SID + V1_CTRL
+        jsr note_delay
+        lda #SAW
+        sta SID + V1_CTRL
+        jsr gap_delay
+
+        inc NOTE_IDX
+        jmp s5_loop
+
+s5_next_mode:
+        inc MODE_IDX
+        jmp s5_mode
+
+s5_done:
+        ; Clear filter routing
+        lda #$00
+        sta SID + RES_FILT
+        lda #$0F
+        sta SID + MODE_VOL
+
         ; Gate all voices off, loop back to section 1
         lda #$00
         sta SID + V1_CTRL
@@ -362,6 +506,13 @@ gd_in:  dex
         dey
         bne gd_out
         rts
+
+; ============================================================
+; Filter mode bytes for section 5 (MODE_VOL: mode bits + volume 15)
+; $1F = LP, $2F = BP, $4F = HP, $00 = end sentinel
+; ============================================================
+filter_modes:
+         .byte $1F, $2F, $4F, $00
 
 ; ============================================================
 ; Note tables — C major scale up and down (15 notes + sentinel)

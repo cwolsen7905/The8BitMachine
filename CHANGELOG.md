@@ -9,6 +9,20 @@ Releases are tagged on the `main` branch; active development happens on `dev`.
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-07-24
+
+### Added
+- **Selectable SID chip revision (6581 / 8580)** — `SID6581::Model` with `setModel()` / `model()`; chosen from a "Chip" combo in the SID panel and persisted in the machine config as a root-level `sid_model` key. The key is written and read in both config shapes (the v2 preset block and the v1 device list) because in preset mode the SID lives inside `C64IOSpace` and never appears in the serialised device list. `reset()` deliberately preserves the model — it is a hardware property of the machine, not runtime state. `deviceName()` now reports the active revision
+- **SID panel filter readout** — the Filter/Volume section now shows the cutoff register resolved to Hz for the active chip revision and the resonance nibble resolved to an effective Q, instead of only the raw register values
+- **SID demo ROM: resonance and filter-mode sections** — `roms/6502/sid_demo.s` gains section 4 (fixed cutoff, resonance stepping 0→15, exercising the previously unstable high-Q range) and section 5 (fixed cutoff and resonance, cycling LP → BP → HP one scale pass each, so the BP and HP filter outputs are exercised — they had no coverage before)
+
+### Fixed
+- **SID hard sync did not reset the oscillator** — on a source wrap the sync path set the target's phase *increment* to zero, which stalled the target oscillator for one sample instead of restarting its waveform; real hard sync zeroes the target's phase accumulator. Sync now sets the phase to 0 via an explicit per-voice `syncReset` flag computed from the pre-advance phase snapshot, so all three voices see a consistent view regardless of iteration order. Verified by observing voice 3's accumulator through the `OSC3` (`$1B`) read-back register: enabling SYNC adds one guaranteed exact-zero phase reading per source wrap (measured 30 extra zeros against 27.3 predicted wraps)
+- **SID filter cutoff used one wrong curve for both chip revisions** — the cutoff was computed as a straight line from 30 Hz to 12 kHz, which is roughly right for the 8580 but wrong for the 6581 in both range and shape. The 8580 now uses the exact linear relation reSID derives (`fc_hz = 12500·(fc+1)/2048`), and the 6581 uses a piecewise-linear approximation of the measured curve: ~220 Hz to ~7.5 kHz with the characteristic knee around `$300–$500`. The 6581 previously sounded far brighter than real hardware across the whole register range
+- **SID resonance mapped to an arbitrary Q range** — damping was a linear ramp from 2.0 to 0.1 rather than the ladder the hardware implements. It now follows reSID's `1/Q ≈ ~res/8` (Q from 0.533 at `res=0` to 8 at `res=14`); at `res=15` the ones' complement is zero and Q is theoretically unlimited, so damping is floored at the `res=14` value to keep the state-variable filter from self-oscillating into the output clamp
+- **SID noise LFSR reset seed** — power-on reset seeded the shift register with `0x7FFFF8`; reSID uses `0x7FFFFE`. The TEST-bit path keeps its distinct `0x7FFFFF` value, since holding TEST fills the register with ones — the two constants are now named (`kLfsrReset` / `kLfsrTestFill`) to record that the difference is intentional
+- **Project version was stale** — `CMakeLists.txt` still declared `VERSION 0.33.3` (and the same string for both macOS bundle version keys) after the 0.34.0 release; all three are now bumped to 0.35.0 alongside the `README.md` "Current State" heading
+
 ## [0.34.0] - 2026-06-14
 
 ### Added

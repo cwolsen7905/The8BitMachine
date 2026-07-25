@@ -14,7 +14,7 @@ The default machine that ships out of the box is a **MOS 8502** system (the CPU 
 
 ---
 
-## Current State  (v0.34.0)
+## Current State  (v0.35.0)
 
 ### Machine Designer
 - **`IBusDevice` interface** — any chip or peripheral implements `reset()`, `clock()`, `read(offset)`, `write(offset, value)`, and `statusLine()` for the designer panel. Devices that expose an ImGui debug panel also implement the separate **`IHasPanel`** interface (`drawPanel()`), keeping UI knowledge out of the core device contract
@@ -252,7 +252,9 @@ Device instances are owned by `Machine`.  The default map is:
 - [x] **Second CPU (WDC 65C02)** — selectable at runtime via Machine Designer; 27 CMOS opcode patches, JMP indirect bug fixed
 - [x] **MOS 6510 CPU** — built-in I/O port at `$00`/`$01`; `onIOWrite` callback drives `SwitchableRegion` bank switching; C64 power-on defaults (`DDR=$2F`, data=`$37`)
 - [x] **VIC-IIe** (`$D000–$D3FF`) — register file, raster IRQ, border + background colour, 40×25 character mode with embedded open font
-- [x] **SID audio (MOS 6581/8580)** at `$D400–$D7FF` — all 4 waveforms, ADSR envelopes, master volume, SDL audio output; filter and ring/sync modulation in a future step
+- [x] **SID audio (MOS 6581/8580)** at `$D400–$D7FF` — all 4 waveforms, ADSR envelopes, master volume, SDL audio output
+- [x] **SID filter, hard sync and ring modulation** — Chamberlin state-variable filter with selectable LP/BP/HP modes and per-voice routing; resonance follows the 6581 ladder (`1/Q ≈ ~res/8`, Q 0.53→8); hard sync zeroes the target oscillator's phase accumulator on each source wrap; ring modulation XORs the triangle fold bit with the source oscillator MSB
+- [x] **SID chip revision selectable (6581 / 8580)** — the two revisions have very different filters: the 8580 cutoff is linear over 0–12.5 kHz, while the 6581 spans only ~220 Hz–7.5 kHz with a pronounced knee (which is why 6581 tunes sound darker). Chosen in the SID panel and persisted in the machine config as `sid_model`
 - [x] **Keyboard input via CIA1 matrix** — SDL keys routed to CIA1 `setKey(col, row)`; capture focus model with visual indicator
 - [x] **ROM regions** — read-only `ROM` device; load `.bin`/`.prg` files via Machine Designer → Load ROM File; writes silently ignored; `.prg` header stripped automatically; address range auto-calculated from file size; config save/load persists ROM file paths
 - [x] **Bank switching (simple)** — `BankedMemory` device (N equal banks × window size); `BankSelectPort` companion I/O byte; Machine Designer → Add Banked RAM wires both in one step; config save/load persists bank layout
