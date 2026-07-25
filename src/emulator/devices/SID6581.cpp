@@ -19,6 +19,80 @@ const float SID6581::kDecRelMs[16] = {
 };
 
 // ---------------------------------------------------------------------------
+// Filter cutoff curves
+//
+// The two chip revisions differ enough here to change the character of a tune
+// completely, so they are modelled separately.
+//
+// MOS 8580 — the cutoff is linear.  reSID derives the coefficient
+//   w0 = 82355*(fc+1) >> 11, where 82355 = 1.048576 * 2*pi * 12500, i.e. the
+//   cutoff sweeps 0–12.5 kHz linearly across the 11-bit register:
+//       fc_hz = 12500 * (fc + 1) / 2048
+//
+// MOS 6581 — the cutoff is markedly nonlinear and spans a much narrower range,
+//   roughly 220 Hz to 7.5 kHz.  It stays almost flat through the bottom third
+//   of the register, climbs steeply through a knee around $300–$500, then
+//   flattens again as it saturates.  reSID models this from die photographs at
+//   the transistor level (a per-register f0_dac table feeding a VCR model),
+//   which is far more machinery than we need; the breakpoint table below
+//   reproduces the *shape* of the measured curve with piecewise-linear
+//   interpolation.  It is an approximation of the published curve, not
+//   measured data from a specific chip — real 6581s vary noticeably between
+//   individual units anyway.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct FcPoint { uint16_t reg; float hz; };
+
+// Breakpoints along the 6581 cutoff curve (register value → approximate Hz).
+constexpr FcPoint k6581Curve[] = {
+    {    0,  220.0f }, {  256,  245.0f }, {  512,  330.0f }, {  768,  700.0f },
+    {  896, 1200.0f }, { 1024, 2100.0f }, { 1152, 3300.0f }, { 1280, 4400.0f },
+    { 1408, 5300.0f }, { 1536, 6000.0f }, { 1792, 6900.0f }, { 2047, 7500.0f },
+};
+
+} // namespace
+
+float SID6581::cutoffHz(uint16_t fcReg, Model m) {
+    if (fcReg > 2047) fcReg = 2047;
+
+    if (m == Model::MOS8580)
+        return 12500.0f * (fcReg + 1) / 2048.0f;
+
+    constexpr int n = static_cast<int>(sizeof(k6581Curve) / sizeof(k6581Curve[0]));
+    if (fcReg <= k6581Curve[0].reg)     return k6581Curve[0].hz;
+    if (fcReg >= k6581Curve[n-1].reg)   return k6581Curve[n-1].hz;
+
+    for (int i = 1; i < n; ++i) {
+        if (fcReg <= k6581Curve[i].reg) {
+            const FcPoint& a = k6581Curve[i-1];
+            const FcPoint& b = k6581Curve[i];
+            const float t = static_cast<float>(fcReg - a.reg)
+                          / static_cast<float>(b.reg - a.reg);
+            return a.hz + t * (b.hz - a.hz);
+        }
+    }
+    return k6581Curve[n-1].hz;
+}
+
+// ---------------------------------------------------------------------------
+// Resonance → damping (1/Q).
+//
+// reSID, from die photographs of the resonance "resistor" ladder: 1/Q ~ ~res/8,
+// so Q ranges from 0.533 at res=0 up to 8 at res=14.  At res=15 the ones'
+// complement is 0 and Q is theoretically unlimited; a Chamberlin SVF with zero
+// damping self-oscillates and runs away, so that case is floored at the Q=8
+// value rather than allowed to blow up into the output clamp.
+// ---------------------------------------------------------------------------
+
+float SID6581::dampingForRes(uint8_t res) {
+    const uint8_t invRes = static_cast<uint8_t>(~res & 0x0F);
+    if (invRes == 0) return 1.0f / 8.0f;   // res = 15
+    return invRes / 8.0f;
+}
+
+// ---------------------------------------------------------------------------
 // IBusDevice
 // ---------------------------------------------------------------------------
 
@@ -27,7 +101,7 @@ void SID6581::reset() {
     std::memset(regs_, 0, sizeof(regs_));
     for (auto& v : osc_) {
         v.phase    = 0;
-        v.lfsr     = 0x7FFFF8;
+        v.lfsr     = kLfsrReset;
         v.envLevel = 0.0f;
         v.envStage = ENV_OFF;
         v.prevGate = false;
@@ -165,12 +239,14 @@ float SID6581::synthVoice(int v, uint8_t ctrl, uint16_t pw,
 void SID6581::generateSamples(float* out, int frames, float sampleRate) {
     uint8_t regs[NUM_REGS];
     bool    muted[3];
+    Model   model;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         std::memcpy(regs, regs_, NUM_REGS);
         muted[0] = mutedVoice_[0];
         muted[1] = mutedVoice_[1];
         muted[2] = mutedVoice_[2];
+        model    = model_;
     }
 
     // --- Global registers ---
@@ -182,12 +258,11 @@ void SID6581::generateSamples(float* out, int frames, float sampleRate) {
     // Chamberlin SVF coefficients (computed once per buffer)
     uint16_t fcReg = (static_cast<uint16_t>(regs[REG_FC_HI]) << 3)
                    | (regs[REG_FC_LO] & 0x07);
-    float fcHz = 30.0f + fcReg * (12000.0f - 30.0f) / 2047.0f;
+    float fcHz = cutoffHz(fcReg, model);
     float F    = 2.0f * std::sin(3.14159265358979323846f * fcHz / sampleRate);
     F = std::min(F, 1.5f);  // clamp for filter stability
 
-    // damping: res=0 → 2.0 (no resonance), res=15 → 0.1 (sharp peak)
-    float damping = 2.0f - res * (1.9f / 15.0f);
+    float damping = dampingForRes(res);
 
     // Voice register bases
     static constexpr int    kBase[3]    = { 0, 7, 14 };
@@ -205,12 +280,16 @@ void SID6581::generateSamples(float* out, int frames, float sampleRate) {
             inc[v] = static_cast<uint32_t>(freq * kSidClock / sampleRate);
         }
 
-        // ---- Step 2: hard sync — reset target if source phase wraps ----
+        // ---- Step 2: hard sync — target resets when the source phase wraps ----
+        // Hard sync zeroes the *target's* accumulator; it does not stall it.
+        // Detection uses the pre-advance phases so every voice sees the same
+        // snapshot regardless of iteration order.
+        bool syncReset[3] = { false, false, false };
         for (int v = 0; v < 3; ++v) {
             if (!(regs[kBase[v]+4] & 0x02)) continue;  // SYNC bit not set
             int src = kSyncSrc[v];
-            if ((prev[src] + inc[src]) > 0xFFFFFF)     // source wrapped
-                inc[v] = 0;  // target resets to prev[v]=0 effectively on next step
+            if ((static_cast<uint64_t>(prev[src]) + inc[src]) > 0xFFFFFF)
+                syncReset[v] = true;                   // source wrapped
         }
 
         // ---- Step 3: advance all phases ----
@@ -218,7 +297,9 @@ void SID6581::generateSamples(float* out, int frames, float sampleRate) {
             uint8_t ctrl = regs[kBase[v]+4];
             if (ctrl & 0x08) {          // TEST bit: freeze at 0
                 osc_[v].phase = 0;
-                osc_[v].lfsr  = 0x7FFFFF;
+                osc_[v].lfsr  = kLfsrTestFill;
+            } else if (syncReset[v]) {
+                osc_[v].phase = 0;      // hard sync: restart the waveform
             } else {
                 osc_[v].phase = (prev[v] + inc[v]) & 0xFFFFFF;
             }
@@ -351,8 +432,19 @@ void SID6581::drawPanel(const char* title, bool* open) {
         const uint8_t  res = (r[REG_RES_FILT] >> 4) & 0x0F;
         const uint8_t  vol = r[REG_MODE_VOL] & 0x0F;
         const uint8_t  fm  = (r[REG_MODE_VOL] >> 4) & 0x07;
-        ImGui::Text("Cutoff $%03X  Res %X  Vol %X",
-            (unsigned)fc, (unsigned)res, (unsigned)vol);
+
+        // Chip revision — changes the cutoff curve, so show its effect live.
+        Model m = model();
+        int   mi = (m == Model::MOS8580) ? 1 : 0;
+        ImGui::SetNextItemWidth(140.0f);
+        if (ImGui::Combo("Chip", &mi, "MOS 6581\0MOS 8580\0"))
+            setModel(mi == 1 ? Model::MOS8580 : Model::MOS6581);
+        ImGui::SameLine();
+        ImGui::TextDisabled(mi == 1 ? "(0-12.5 kHz linear)" : "(220 Hz-7.5 kHz)");
+
+        ImGui::Text("Cutoff $%03X = %.0f Hz", (unsigned)fc, cutoffHz(fc, m));
+        ImGui::Text("Res %X (Q %.2f)  Vol %X",
+            (unsigned)res, 1.0f / dampingForRes(res), (unsigned)vol);
         ImGui::Text("Mode  ");
         ImGui::SameLine();
         if (fm & 0x1) ImGui::TextColored({0.4f,0.8f,1,1}, "LP "); else ImGui::TextDisabled("LP ");

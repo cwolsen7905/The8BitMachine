@@ -691,6 +691,9 @@ MachineConfigResult Machine::saveConfig(const std::string& path, int cyclesPerFr
         root["preset_config"]     = pc;
         if (cyclesPerFrame > 0)
             root["cycles_per_frame"] = cyclesPerFrame;
+        // SID revision lives at the root: in preset mode the SID is inside
+        // C64IOSpace and so never appears in the device list below.
+        root["sid_model"] = sid_.modelName();
 
         std::ofstream f(path);
         if (!f)
@@ -703,6 +706,7 @@ MachineConfigResult Machine::saveConfig(const std::string& path, int cyclesPerFr
     root["cpu"]     = activeCpu_->cpuName();
     if (cyclesPerFrame > 0)
         root["cycles_per_frame"] = cyclesPerFrame;
+    root["sid_model"] = sid_.modelName();
 
     json devArray = json::array();
     for (const auto& e : bus_.devices()) {
@@ -772,6 +776,11 @@ MachineConfigResult Machine::loadConfig(const std::string& path) {
     } catch (const json::exception& e) {
         return { false, std::string("[Config] JSON parse error: ") + e.what() };
     }
+
+    // SID revision applies to both config shapes, so it is restored before the
+    // branch below returns.  reset() deliberately preserves the model, so the
+    // preset builders further down will not clobber it.
+    sid_.setModelByName(root.value("sid_model", "6581"));
 
     // Version 2: preset block — reconstruct via the appropriate builder.
     if (root.contains("preset")) {
